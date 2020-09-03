@@ -16,7 +16,7 @@
 
     kv_decl(entry_list, struct ini_entry*);
     kv_decl(value_list, struct ini_value);
-    entry_list *yini_entries;
+    extern entry_list *yini_entries;
 }
 
 %{
@@ -25,6 +25,7 @@
 #include "system4.h"
 #include "system4/string.h"
 
+entry_list *yini_entries;
 extern unsigned long yini_line;
 extern int yini_lex();
 void yini_error(const char *s) { ERROR("at line %lu: %s", yini_line, s); }

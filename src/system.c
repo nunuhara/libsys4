@@ -21,6 +21,8 @@
 #include "system4.h"
 #include "system4/utfsjis.h"
 
+bool sys_silent;
+
 mem_alloc void *_xmalloc(size_t size, const char *func)
 {
 	void *ptr = malloc(size);

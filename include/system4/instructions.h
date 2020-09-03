@@ -68,8 +68,6 @@ struct syscall {
 	const enum ain_data_type argtypes[6];
 };
 
-const struct syscall syscalls[NR_SYSCALLS];
-
 enum opcode
 {
         PUSH           = 0x00,
@@ -399,7 +397,8 @@ struct instruction {
 	int args[INSTRUCTION_MAX_ARGS]; // argument data types
 };
 
-struct instruction instructions[NR_OPCODES];
+extern const struct syscall syscalls[NR_SYSCALLS];
+extern struct instruction instructions[NR_OPCODES];
 
 void initialize_instructions(void);
 
