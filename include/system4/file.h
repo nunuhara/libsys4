@@ -24,6 +24,8 @@
 FILE *file_open_utf8(const char *path, const char *mode);
 void *file_read(const char *path, size_t *len_out);
 bool file_exists(const char *path);
+const char *file_extension(const char *path);
+bool is_directory(const char *path);
 int mkdir_p(const char *path);
 
 #endif /* SYSTEM4_FILE_H */

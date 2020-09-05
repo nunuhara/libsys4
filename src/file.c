@@ -95,6 +95,19 @@ bool file_exists(const char *path)
 	return access(path, F_OK) != -1;
 }
 
+const char *file_extension(const char *path)
+{
+	const char *ext = strrchr(path, '.');
+	return ext ? ext+1 : NULL;
+}
+
+bool is_directory(const char *path)
+{
+	struct stat s;
+	stat(path, &s);
+	return S_ISDIR(s.st_mode);
+}
+
 // Adapted from http://stackoverflow.com/a/2336245/119527
 int mkdir_p(const char *path)
 {
