@@ -904,6 +904,8 @@ static void detect_quirks(struct ain *ain)
 	if (ain->version == 14) {
 		if (!strncasecmp(name, "HentaiLabyrinth.ain", 19))
 			ain->minor_version = 1;
+		if (!strncasecmp(name, "dohnadohnaTrial.ain", 19))
+			ain->minor_version = 1;
 	}
 
 	free(tmp);
