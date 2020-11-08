@@ -658,6 +658,16 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 		if (!strcmp(funs[i].name, "0"))
 			ain->alloc = i;
 
+		// detect game (to apply needed quirks)
+		if (ain->version == 14 && ain->minor_version == 0) {
+			if (!strcmp(funs[i].name, "DohnaDohna@0")) {
+				ain->minor_version = 1;
+			}
+			if (!strcmp(funs[i].name, "AneYume@Initialize")) {
+				ain->minor_version = 1;
+			}
+		}
+
 		if (ain->version > 0 && ain->version < 7)
 			funs[i].is_label = read_int32(r);
 
@@ -896,21 +906,6 @@ static void start_section(struct ain_reader *r, struct ain_section *section)
 	}
 }
 
-static void detect_quirks(struct ain *ain)
-{
-	char *tmp = strdup(ain->ain_path);
-	char *name = basename(tmp);
-
-	if (ain->version == 14) {
-		if (!strncasecmp(name, "HentaiLabyrinth.ain", 19))
-			ain->minor_version = 1;
-		if (!strncasecmp(name, "dohnadohnaTrial.ain", 19))
-			ain->minor_version = 1;
-	}
-
-	free(tmp);
-}
-
 static bool read_tag(struct ain_reader *r, struct ain *ain)
 {
 	if (r->index + 4 >= r->size) {
@@ -933,7 +928,6 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 			instructions[DG_STR_TO_METHOD].nr_args = 1;
 			instructions[CALLMETHOD].args[0] = T_INT;
 		}
-		detect_quirks(ain);
 	} else if (TAG_EQ("KEYC")) {
 		start_section(r, &ain->KEYC);
 		ain->keycode = read_int32(r);
