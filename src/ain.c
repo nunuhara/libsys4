@@ -1275,7 +1275,7 @@ static void ain_free_type(struct ain_type *type)
 	free(type->array_type);
 }
 
-static void ain_free_variables(struct ain_variable *vars, int nr_vars)
+void ain_free_variables(struct ain_variable *vars, int nr_vars)
 {
 	for (int i = 0; i < nr_vars; i++) {
 		free(vars[i].name);
