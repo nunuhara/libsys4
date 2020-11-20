@@ -108,6 +108,15 @@ bool is_directory(const char *path)
 	return S_ISDIR(s.st_mode);
 }
 
+off_t file_size(const char *path)
+{
+	struct stat s;
+	stat(path, &s);
+	if (!S_ISREG(s.st_mode))
+		return -1;
+	return s.st_size;
+}
+
 // Adapted from http://stackoverflow.com/a/2336245/119527
 int mkdir_p(const char *path)
 {
