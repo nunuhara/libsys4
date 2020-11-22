@@ -146,6 +146,13 @@ void buffer_write_cstring(struct buffer *b, const char *s)
 	buffer_write_bytes(b, (uint8_t*)s, strlen(s)+1);
 }
 
+void buffer_write_pascal_cstring(struct buffer *b, const char *s)
+{
+	size_t len = strlen(s);
+	buffer_write_int32(b, len);
+	buffer_write_bytes(b, (uint8_t*)s, len);
+}
+
 void buffer_write_pascal_string(struct buffer *b, struct string *s)
 {
 	buffer_write_int32(b, s->size);

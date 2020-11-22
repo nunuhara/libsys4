@@ -48,6 +48,7 @@ void buffer_write_string(struct buffer *b, struct string *s);
 void buffer_write_cstring(struct buffer *b, const char *s);
 /* Write a length-prefixed string. */
 void buffer_write_pascal_string(struct buffer *b, struct string *s);
+void buffer_write_pascal_cstring(struct buffer *b, const char *s);
 
 static inline void buffer_seek(struct buffer *r, size_t off)
 {
