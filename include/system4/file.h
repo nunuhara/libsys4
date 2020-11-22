@@ -17,13 +17,16 @@
 #ifndef SYSTEM4_FILE_H
 #define SYSTEM4_FILE_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
 
 FILE *file_open_utf8(const char *path, const char *mode);
 void *file_read(const char *path, size_t *len_out);
+bool file_write(const char *path, uint8_t *data, size_t data_size);
+bool file_copy(const char *src, const char *dst);
 bool file_exists(const char *path);
 off_t file_size(const char *path);
 const char *file_extension(const char *path);

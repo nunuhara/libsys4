@@ -90,6 +90,29 @@ void *file_read(const char *path, size_t *len_out)
 	return buf;
 }
 
+bool file_write(const char *path, uint8_t *data, size_t data_size)
+{
+	FILE *fp = fopen(path, "wb");
+	if (!fp)
+		return false;
+	int r = fwrite(data, data_size, 1, fp);
+	int tmp = errno;
+	fclose(fp);
+	errno = tmp;
+	return r == 1;
+}
+
+bool file_copy(const char *src, const char *dst)
+{
+	size_t data_size;
+	uint8_t *data = file_read(src, &data_size);
+	if (!data)
+		return false;
+	bool r = file_write(dst, data, data_size);
+	free(data);
+	return r;
+}
+
 bool file_exists(const char *path)
 {
 	return access(path, F_OK) != -1;
