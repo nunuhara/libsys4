@@ -70,6 +70,14 @@ struct string *buffer_read_pascal_string(struct buffer *r)
 	return s;
 }
 
+void buffer_read_bytes(struct buffer *r, uint8_t *dst, size_t n)
+{
+	if (buffer_remaining(r) < n)
+		ERROR("Out of bounds buffer read");
+	memcpy(dst, r->buf+r->index, n);
+	r->index += n;
+}
+
 void buffer_skip(struct buffer *r, size_t off)
 {
 	r->index = min(r->index + off, r->size);

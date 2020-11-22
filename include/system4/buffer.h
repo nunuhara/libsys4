@@ -32,6 +32,7 @@ uint8_t buffer_read_u8(struct buffer *r);
 uint16_t buffer_read_u16(struct buffer *r);
 float buffer_read_float(struct buffer *r);
 struct string *buffer_read_pascal_string(struct buffer *r);
+void buffer_read_bytes(struct buffer *r, uint8_t *dst, size_t n);
 void buffer_skip(struct buffer *r, size_t off);
 size_t buffer_remaining(struct buffer *r);
 char *buffer_strdata(struct buffer *r);

@@ -49,6 +49,8 @@ enum cg_type cg_check_format(uint8_t *data)
 		return ALCG_QNT;
 	} else if (ajp_checkfmt(data)) {
 		return ALCG_AJP;
+	} else if (png_cg_checkfmt(data)) {
+		return ALCG_PNG;
 	} else if (webp_checkfmt(data)) {
 		return ALCG_WEBP;
 	} else if (dcf_checkfmt(data)) {
@@ -72,6 +74,9 @@ bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst)
 		WARNING("AJP GetMetrics not implemented");
 		archive_free_data(dfile);
 		return false;
+	case ALCG_PNG:
+		png_cg_get_metrics(dfile->data, dfile->size, dst);
+		break;
 	case ALCG_WEBP:
 		webp_get_metrics(dfile->data, dfile->size, dst);
 		break;
@@ -111,7 +116,7 @@ static struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size, struct archive *
 		ajp_extract(buf, buf_size, cg);
 		break;
 	case ALCG_PNG:
-		WARNING("Unimplemented CG type: PNG");
+		png_cg_extract(buf, buf_size, cg);
 		break;
 	case ALCG_WEBP:
 		webp_extract(buf, buf_size, cg, ar);

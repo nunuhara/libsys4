@@ -23,8 +23,11 @@
 #include <stdio.h>
 
 struct cg;
+struct cg_metrics;
 
 bool png_cg_checkfmt(const uint8_t *data);
+bool png_cg_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *dst);
+void png_cg_extract(const uint8_t *data, size_t size, struct cg *cg);
 int png_cg_write(struct cg *cg, FILE *f);
 
 #endif /* SYSTEM4_PNG_H */
