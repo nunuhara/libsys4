@@ -3,7 +3,8 @@
  *
  * Copyright (C) 1997-1998 Masaki Chikama (Wren) <chikama@kasumi.ipl.mech.nagoya-u.ac.jp>
  *               1998-                           <masaki-c@is.aist-nara.ac.jp>
- *               2019 Nunuhara Cabbage           <nunuhara@haniwa.technology>
+ *               2019-2020 Nunuhara Cabbage      <nunuhara@haniwa.technology>
+ *               2020      <KichikuouChrome@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,21 +19,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * @version 1.0     01/07/30 initial version
- * @version 1.1     01/08/10 fix alpha map extraction
- * @version 1.2     01/11/26 zlibの展開バッファが画像サイズよりも大きなものを
- *                           要求するときの workaround
- * @version 1.2     01/11/28 format version 1 に対応
- *                           *(top + 4) is  0 -> version 0
- *                           *(top + 4) is  1 -> version 1
- * @version 1.3     03/02/22 縦横奇数サイズ時にpixel/alphaともおかしかったのをfix
- *                           zlib展開バッファを縦横それぞれ1byteづつ多くとる
- *                           ようにした
  */
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
@@ -284,4 +275,151 @@ void qnt_extract(const uint8_t *data, struct cg *cg)
 	free(alpha);
 	free(pixels);
 	cg->pixels = tmp;
+}
+
+/*
+ * QNT encoder adapted from xsys35c
+ * (github.com/kichikuou/xsys35c)
+ */
+
+static void fputdw(uint32_t n, FILE *fp) {
+	fputc(n, fp);
+	fputc(n >> 8, fp);
+	fputc(n >> 16, fp);
+	fputc(n >> 24, fp);
+}
+
+static void qnt_write_header(struct qnt_header *qnt, FILE *fp) {
+	fputc('Q', fp);
+	fputc('N', fp);
+	fputc('T', fp);
+	fputc('\0', fp);
+	fputdw(1, fp);
+	fputdw(qnt->hdr_size, fp);
+	fputdw(qnt->x0, fp);
+	fputdw(qnt->y0, fp);
+	fputdw(qnt->width, fp);
+	fputdw(qnt->height, fp);
+	fputdw(qnt->bpp, fp);
+	fputdw(qnt->rsv, fp);
+	fputdw(qnt->pixel_size, fp);
+	fputdw(qnt->alpha_size, fp);
+	for (int i = 44; i < qnt->hdr_size; i++)
+		fputc(0, fp);
+}
+
+static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
+	int width = (qnt->width + 1) & ~1;
+	int height = (qnt->height + 1) & ~1;
+
+	const int bufsize = width * height * 3;
+	uint8_t *buf = malloc(bufsize);
+	uint8_t *p = buf;
+	for (int c = 2; c >= 0; c--) {
+		for (int y = 0; y < height; y += 2) {
+			for (int x = 0; x < width; x += 2) {
+				*p++ = rows[y  ][ x   *4 + c];
+				*p++ = rows[y+1][ x   *4 + c];
+				*p++ = rows[y  ][(x+1)*4 + c];
+				*p++ = rows[y+1][(x+1)*4 + c];
+			}
+		}
+	}
+	assert(p == buf + bufsize);
+
+	unsigned long destsize = compressBound(bufsize);
+	uint8_t *compressed = malloc(destsize);
+	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
+	if (r != Z_OK)
+		ERROR("qnt: compress() failed with error code %d", r);
+	qnt->pixel_size = destsize;
+
+	free(buf);
+	return compressed;
+}
+
+static uint8_t *encode_alpha(struct qnt_header *qnt, uint8_t **rows) {
+	int width = (qnt->width + 1) & ~1;
+	int height = (qnt->height + 1) & ~1;
+
+	const int bufsize = width * height;
+	uint8_t *buf = malloc(bufsize);
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++)
+			buf[y * width + x] = rows[y][x * 4 + 3];
+	}
+
+	unsigned long destsize = compressBound(bufsize);
+	uint8_t *compressed = malloc(destsize);
+	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
+	if (r != Z_OK)
+		ERROR("qnt: compress() failed with error code %d", r);
+	qnt->alpha_size = destsize;
+
+	free(buf);
+	return compressed;
+}
+
+static void filter(uint8_t **rows, int width, int height) {
+	for (int y = height - 1; y > 0; y--) {
+		for (int x = width - 1; x > 0; x--) {
+			for (int c = 0; c < 4; c++) {
+				int up = rows[y-1][x*4+c];
+				int left = rows[y][(x-1)*4+c];
+				rows[y][x*4+c] = ((up + left) >> 1) - rows[y][x*4+c];
+			}
+		}
+
+		for (int c = 0; c < 4; c++)
+			rows[y][c] = rows[y-1][c] - rows[y][c];
+	}
+	for (int x = width - 1; x > 0; x--) {
+		for (int c = 0; c < 4; c++)
+			rows[0][x*4+c] = rows[0][(x-1)*4+c] - rows[0][x*4+c];
+	}
+}
+
+static uint8_t **allocate_bitmap_buffer(int width, int height)
+{
+	uint8_t **rows = xmalloc(sizeof(uint8_t*)*height);
+	uint8_t *buffer = calloc(1, height * width * 4);
+	for (int y = 0; y < height; y++) {
+		rows[y] = buffer + y * width * 4;
+	}
+	return rows;
+}
+
+static void free_bitmap_buffer(uint8_t **rows)
+{
+	free(rows[0]);
+	free(rows);
+}
+
+int qnt_write(struct cg *cg, FILE *f)
+{
+	struct qnt_header qnt = {
+		.hdr_size = 52,
+		.width = cg->metrics.w,
+		.height = cg->metrics.h,
+		.bpp = 24,
+		.rsv = 1,
+	};
+
+	uint8_t **rows = allocate_bitmap_buffer((qnt.width + 1) & ~1, (qnt.height + 1) & ~1);
+	uint8_t *buf = cg->pixels;
+	for (int i = 0; i < qnt.height; i++) {
+		memcpy(rows[i], buf + 4*qnt.width*i, 4*qnt.width);
+	}
+
+	filter(rows, cg->metrics.w, cg->metrics.h);
+	uint8_t *pixel_data = encode_pixels(&qnt, rows);
+	uint8_t *alpha_data = encode_alpha(&qnt, rows);
+
+	qnt_write_header(&qnt, f);
+	fwrite(pixel_data, qnt.pixel_size, 1, f);
+	free(pixel_data);
+	fwrite(alpha_data, qnt.alpha_size, 1, f);
+	free(alpha_data);
+	free_bitmap_buffer(rows);
+	return 1;
 }

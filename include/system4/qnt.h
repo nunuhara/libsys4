@@ -28,6 +28,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 struct cg;
 struct cg_metrics;
@@ -48,5 +49,6 @@ bool qnt_checkfmt(const uint8_t *data);
 bool qnt_get_metrics(const uint8_t *data, struct cg_metrics *dst);
 void qnt_extract(const uint8_t *data, struct cg *cg);
 void qnt_extract_header(const uint8_t *b, struct qnt_header *qnt);
+int qnt_write(struct cg *cg, FILE *f);
 
 #endif /* SYSTEM4_QNT_H */

@@ -167,10 +167,12 @@ struct cg *cg_load_file(const char *filename)
 int cg_write(struct cg *cg, enum cg_type type, FILE *f)
 {
 	switch (type) {
-	case ALCG_WEBP:
-		return webp_write(cg, f);
+	case ALCG_QNT:
+		return qnt_write(cg, f);
 	case ALCG_PNG:
 		return png_cg_write(cg, f);
+	case ALCG_WEBP:
+		return webp_write(cg, f);
 	default:
 		WARNING("encoding not supported for CG type");
 	}
