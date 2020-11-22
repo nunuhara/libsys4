@@ -103,6 +103,17 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 #include <errno.h>
 #include <webp/encode.h>
 
+int webp_write(struct cg *cg, FILE *f)
+{
+	uint8_t *out;
+	size_t len = WebPEncodeLosslessRGBA(cg->pixels, cg->metrics.w, cg->metrics.h, cg->metrics.w*4, &out);
+	if (fwrite(out, len, 1, f) != 1) {
+		WARNING("webp_write: %s", strerror(errno));
+		return 0;
+	}
+	return 1;
+}
+
 void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 {
 	size_t len;

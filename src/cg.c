@@ -20,10 +20,23 @@
 #include "system4.h"
 #include "system4/archive.h"
 #include "system4/cg.h"
+#include "system4/file.h"
 #include "system4/ajp.h"
 #include "system4/dcf.h"
+#include "system4/png.h"
 #include "system4/qnt.h"
 #include "system4/webp.h"
+
+const char *cg_file_extensions[_ALCG_NR_FORMATS] = {
+	[ALCG_UNKNOWN] = "",
+	[ALCG_QNT]     = "qnt",
+	[ALCG_AJP]     = "ajp",
+	[ALCG_PNG]     = "png",
+	[ALCG_PMS8]    = "pms",
+	[ALCG_PMS16]   = "pms",
+	[ALCG_WEBP]    = "webp",
+	[ALCG_DCF]     = "dcf",
+};
 
 /*
  * Identify cg format
@@ -86,30 +99,25 @@ void cg_free(struct cg *cg)
 	free(cg);
 }
 
-struct cg *cg_load_data(struct archive_data *dfile)
+static struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size, struct archive *ar)
 {
-	int type;
 	struct cg *cg = xcalloc(1, sizeof(struct cg));
 
-	// check loaded cg format
-	type = cg_check_format(dfile->data);
-
-	// extract cg
-	switch(type) {
+	switch (cg_check_format(buf)) {
 	case ALCG_QNT:
-		qnt_extract(dfile->data, cg);
+		qnt_extract(buf, cg);
 		break;
 	case ALCG_AJP:
-		ajp_extract(dfile->data, dfile->size, cg);
+		ajp_extract(buf, buf_size, cg);
 		break;
 	case ALCG_PNG:
 		WARNING("Unimplemented CG type: PNG");
 		break;
 	case ALCG_WEBP:
-		webp_extract(dfile->data, dfile->size, cg, dfile->archive);
+		webp_extract(buf, buf_size, cg, ar);
 		break;
 	case ALCG_DCF:
-		dcf_extract(dfile->data, dfile->size, cg);
+		dcf_extract(buf, buf_size, cg);
 		break;
 	default:
 		WARNING("Unknown CG type");
@@ -120,6 +128,11 @@ struct cg *cg_load_data(struct archive_data *dfile)
 		return cg;
 	free(cg);
 	return NULL;
+}
+
+struct cg *cg_load_data(struct archive_data *dfile)
+{
+	return cg_load_buffer(dfile->data, dfile->size, dfile->archive);
 }
 
 /*
@@ -140,4 +153,26 @@ struct cg *cg_load(struct archive *ar, int no)
 	cg = cg_load_data(dfile);
 	archive_free_data(dfile);
 	return cg;
+}
+
+struct cg *cg_load_file(const char *filename)
+{
+	size_t buf_size;
+	uint8_t *buf = file_read(filename, &buf_size);
+	struct cg *cg = cg_load_buffer(buf, buf_size, NULL);
+	free(buf);
+	return cg;
+}
+
+int cg_write(struct cg *cg, enum cg_type type, FILE *f)
+{
+	switch (type) {
+	case ALCG_WEBP:
+		return webp_write(cg, f);
+	case ALCG_PNG:
+		return png_cg_write(cg, f);
+	default:
+		WARNING("encoding not supported for CG type");
+	}
+	return 0;
 }

@@ -14,8 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
-#ifndef SYSTEM4_WEBP_H
-#define SYSTEM4_WEBP_H
+#ifndef SYSTEM4_PNG_H
+#define SYSTEM4_PNG_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -23,12 +23,8 @@
 #include <stdio.h>
 
 struct cg;
-struct cg_metrics;
-struct archive;
 
-bool webp_checkfmt(const uint8_t *data);
-void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar);
-void webp_get_metrics(uint8_t *data, size_t size, struct cg_metrics *m);
-int webp_write(struct cg *cg, FILE *f);
+bool png_cg_checkfmt(const uint8_t *data);
+int png_cg_write(struct cg *cg, FILE *f);
 
-#endif /* SYSTEM4_WEBP_H */
+#endif /* SYSTEM4_PNG_H */
