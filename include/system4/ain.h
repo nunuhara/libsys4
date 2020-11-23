@@ -344,6 +344,7 @@ int ain_get_function_index(struct ain *ain, struct ain_function *f);
 int ain_get_global(struct ain *ain, const char *name);
 int ain_get_struct(struct ain *ain, char *name);
 int ain_get_functype(struct ain *ain, const char *name);
+int ain_get_string_no(struct ain *ain, const char *str);
 
 int ain_add_function(struct ain *ain, struct ain_function *fun);
 int ain_add_global(struct ain *ain, struct ain_variable *var);

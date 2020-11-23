@@ -84,6 +84,11 @@ static void init_struct_ht(struct ain *ain)
 	}
 }
 
+static intptr_t string_ht_get(struct ain *ain, const char *str)
+{
+	return (intptr_t)ht_get(ain->_string_ht, str, (void*)-1);
+}
+
 static intptr_t string_ht_add(struct ain *ain, const char *str, intptr_t i)
 {
 	struct ht_slot *kv = ht_put(ain->_string_ht, str, (void*)-1);
@@ -291,6 +296,13 @@ int ain_add_string(struct ain *ain, const char *str)
 		ain->strings[ain->nr_strings++] = make_string(str, strlen(str));
 	}
 	return i;
+}
+
+int ain_get_string_no(struct ain *ain, const char *str)
+{
+	if (!ain->_string_ht)
+		init_string_ht(ain);
+	return string_ht_get(ain, str);
 }
 
 int ain_add_message(struct ain *ain, const char *str)
