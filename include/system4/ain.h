@@ -343,6 +343,8 @@ int ain_get_function(struct ain *ain, char *name);
 int ain_get_function_index(struct ain *ain, struct ain_function *f);
 int ain_get_global(struct ain *ain, const char *name);
 int ain_get_struct(struct ain *ain, char *name);
+int ain_get_library(struct ain *ain, const char *name);
+int ain_get_library_function(struct ain *ain, int libno, const char *name);
 int ain_get_functype(struct ain *ain, const char *name);
 int ain_get_string_no(struct ain *ain, const char *str);
 

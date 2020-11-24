@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <libgen.h>
+#include <assert.h>
 #include <zlib.h>
 
 #include "little_endian.h"
@@ -326,6 +327,26 @@ int ain_add_library(struct ain *ain, struct ain_library *lib)
 	ain->libraries[no] = *lib;
 	ain->nr_libraries++;
 	return no;
+}
+
+int ain_get_library(struct ain *ain, const char *name)
+{
+	for (int i = 0; i < ain->nr_libraries; i++) {
+		if (!strcmp(ain->libraries[i].name, name))
+			return i;
+	}
+	return -1;
+}
+
+int ain_get_library_function(struct ain *ain, int libno, const char *name)
+{
+	assert(libno < ain->nr_libraries);
+	struct ain_library *lib = &ain->libraries[libno];
+	for (int i = 0; i < lib->nr_functions; i++) {
+		if (!strcmp(lib->functions[i].name, name))
+			return i;
+	}
+	return -1;
 }
 
 static const char *errtab[AIN_MAX_ERROR] = {
