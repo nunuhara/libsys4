@@ -70,7 +70,7 @@ struct ini_entry *ini_parse(const char *path, int *nr_entries)
 			if (strcmp(e->name->text, other->name->text))
 				continue;
 			if (other->value.type != INI_LIST) {
-				WARNING("ignoring list assignment to non-list: %s[%" SIZE_T_FMT "]", e->name, e->value._list_pos);
+				WARNING("ignoring list assignment to non-list: %s[%z]", e->name, e->value._list_pos);
 				goto end_list_assign;
 			}
 			free_string(e->name);

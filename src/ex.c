@@ -279,7 +279,7 @@ static void ex_read_list(struct buffer *r, struct ex_list *list)
 		size_t data_loc = r->index;
 		_ex_read_value(r, &list->items[i].value, NULL, 0);
 		if (r->index - data_loc != list->items[i].size) {
-			EX_ERROR(r, "Incorrect size for list item: %" SIZE_T_FMT "u / %" SIZE_T_FMT "u",
+			EX_ERROR(r, "Incorrect size for list item: %zu / %zu",
 				 list->items[i].size, r->index - data_loc);
 		}
 	}
@@ -307,7 +307,7 @@ static void ex_read_tree(struct buffer *r, struct ex_tree *tree)
 		_ex_read_value(r, &tree->leaf.value, NULL, 0);
 
 		if (r->index - data_loc != tree->leaf.size) {
-			EX_ERROR(r, "Incorrect size for leaf node: %" SIZE_T_FMT "u / %" SIZE_T_FMT "u",
+			EX_ERROR(r, "Incorrect size for leaf node: %zu / %zu",
 				 tree->leaf.size, r->index - data_loc);
 		}
 
@@ -326,7 +326,7 @@ static void ex_read_block(struct buffer *r, struct ex_block *block)
 
 	block->size = buffer_read_int32(r);
 	if (block->size > buffer_remaining(r))
-		EX_ERROR(r, "Block size extends past end of file: %" SIZE_T_FMT "u", block->size);
+		EX_ERROR(r, "Block size extends past end of file: %zu", block->size);
 
 	size_t data_loc = r->index;
 	block->name = ex_read_string(r);
@@ -357,7 +357,7 @@ static void ex_read_block(struct buffer *r, struct ex_block *block)
 	}
 
 	if (r->index - data_loc != block->size) {
-		EX_ERROR(r, "Incorrect block size: %" SIZE_T_FMT "u / %" SIZE_T_FMT "u",
+		EX_ERROR(r, "Incorrect block size: %zu / %zu",
 			 r->index - data_loc, block->size);
 	}
 }

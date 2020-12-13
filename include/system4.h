@@ -74,12 +74,6 @@ mem_alloc void *xrealloc_array(void *dst, size_t old_nmemb, size_t new_nmemb, si
 	})
 
 #ifdef _WIN32
-#define SIZE_T_FMT "I"
-#else
-#define SIZE_T_FMT "z"
-#endif
-
-#ifdef _WIN32
 #define mmap(...) (ERROR("mmap not supported on Windows"), NULL)
 #define munmap(...) ERROR("munmap not supported on Windows")
 #define MAP_FAILED 0
