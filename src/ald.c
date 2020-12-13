@@ -211,18 +211,18 @@ struct archive_data *ald_get_descriptor(struct archive *_ar, int no)
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
 		dfile->data.name = strdup((char*)hdr + 16);
 	} else {
-		uint8_t *hdr = xmalloc(8);
+		uint8_t *hdr = xmalloc(16);
 		FILE *fp = ar->files[dfile->disk].fp;
 
 		// read header size, file size
 		fseek(fp, dfile->dataptr, SEEK_SET);
-		fread(hdr, 8, 1, fp);
+		fread(hdr, 16, 1, fp);
 		dfile->hdr_size = LittleEndian_getDW(hdr, 0);
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
 
 		// read name
-		dfile->data.name = xcalloc(dfile->hdr_size-8, 1);
-		fread(dfile->data.name, dfile->hdr_size-8, 1, fp);
+		dfile->data.name = xcalloc(dfile->hdr_size-16, 1);
+		fread(dfile->data.name, dfile->hdr_size-16, 1, fp);
 
 		free(hdr);
 	}
@@ -341,7 +341,7 @@ struct archive *ald_open(char **files, int count, int flags, int *error)
 	for (int i = 0; i < count; i++) {
 		if (!files[i])
 			continue;
-		if (!(fp = fopen(files[i], "r"))) {
+		if (!(fp = fopen(files[i], "rb"))) {
 			*error = ARCHIVE_FILE_ERROR;
 			goto exit_err;
 		}
