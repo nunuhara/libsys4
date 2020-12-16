@@ -380,20 +380,20 @@ struct instruction instructions[NR_OPCODES] = {
         TODO ( DG_STR_TO_METHOD, 0, T_DLG ), // XXX: changed in ain version > 8
 
 	TODO ( OP_0X102, 0 ),
-	TODO ( OP_0X103, 0 ),
-	TODO ( OP_0X104, 0 ),
-	TODO ( OP_0X105, 1, T_STRUCT ),
-	TODO ( OP_0X106, 1, T_INT ),
+	TODO ( X_GETENV, 0 ),
+	TODO ( X_SET,    0 ),
+	TODO ( X_ICAST,  1, T_STRUCT ),
+	TODO ( X_OP_SET, 1, T_INT ),
 	TODO ( OP_0X107, 0 ),
 	TODO ( OP_0X108, 0 ),
 	TODO ( OP_0X109, 0 ),
-	TODO ( OP_0X10A, 1, T_INT ),
-	TODO ( OP_0X10B, 2, T_INT, T_INT ),
-	TODO ( OP_0X10C, 1, T_INT ),
-	TODO ( OP_0X10D, 1, T_INT ),
-	TODO ( OP_0X10E, 1, T_INT ),
-	TODO ( OP_0X10F, 0 ),
-	TODO ( OP_0X110, 1, T_INT ),
+	TODO ( X_DUP,    1, T_INT ),
+	TODO ( X_MOV,    2, T_INT, T_INT ),
+	TODO ( X_REF,    1, T_INT ),
+	TODO ( X_ASSIGN, 1, T_INT ),
+	TODO ( X_A_INIT, 1, T_INT ),
+	TODO ( X_A_SIZE, 0 ),
+	TODO ( X_TO_STR, 1, T_INT ),
 };
 
 void initialize_instructions(void)

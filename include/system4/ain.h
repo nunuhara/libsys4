@@ -77,15 +77,22 @@ enum ain_data_type {
 	AIN_UNKNOWN_TYPE_75 = 75, // generic array value? (ref?)
 	AIN_ARRAY = 79,
 	AIN_REF_ARRAY = 80,
-	AIN_ITERATOR = 82, // array iterator
-	AIN_ENUM1 = 86, // return value of EnumType::Parse; has type 91 in array type
+	AIN_WRAP = 82, // some kind of wrapper type
+	AIN_OPTION = 86, // option type, has wrapped type in struct type
 	AIN_UNKNOWN_TYPE_87 = 87,
-	AIN_IFACE = 89, // 2 values: [0] = struct page, [1] = vtable offset to inteface methods
-	AIN_ENUM2 = 91, // used as array type of type 86; has enum type in struct type
-	AIN_ENUM3 = 92, // used as argument type, and array type in EnumType::GetList; has enum type in struct type
+	// 2 values: [0] = struct page, [1] = vtable offset to inteface methods
+	AIN_IFACE = 89,
+	// used as array type of AIN_OPTION; has enum type in struct type
+	AIN_ENUM2 = 91,
+	// used as argument type, and array type in EnumType::GetList;
+	// has enum type in struct type
+	AIN_ENUM3 = 92,
 	AIN_REF_ENUM = 93,
 	AIN_UNKNOWN_TYPE_95 = 95, // function?
-	AIN_UNKNOWN_TYPE_100 = 100,
+	// when an interface is wrapped in an AIN_WRAP, this type is used,
+	// probably just to distinguish from a regular struct since interfaces
+	// have a 2-value representation
+	AIN_IFACE_WRAP = 100,
 };
 
 #define AIN_ARRAY_TYPE				\
@@ -379,8 +386,8 @@ static inline bool ain_is_array_data_type(int32_t type)
 	switch (type) {
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
-	case AIN_ITERATOR:
-	case AIN_ENUM1:
+	case AIN_WRAP:
+	case AIN_OPTION:
 	case AIN_UNKNOWN_TYPE_87:
 		return true;
 	default:

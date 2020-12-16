@@ -401,7 +401,8 @@ static char *container_type_string(struct ain *ain, struct ain_type *t)
 	const char *container_type
 		= t->data == AIN_ARRAY     ? "array"
 		: t->data == AIN_REF_ARRAY ? "ref array"
-		: t->data == AIN_ITERATOR  ? "iter"
+		: t->data == AIN_WRAP      ? "wrap"
+		: t->data == AIN_OPTION    ? "option"
 		: "unknown_container";
 
 	snprintf(buf, 1023, "%s<%s>", container_type, type);
@@ -469,12 +470,9 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 	case AIN_UNKNOWN_TYPE_75:     return strdup("type_75");
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
-	case AIN_ITERATOR:
+	case AIN_WRAP:
+	case AIN_OPTION:
 		return container_type_string(ain, v);
-	case AIN_ENUM1:
-		if (!v->array_type || v->array_type->struc == -1 || !ain || v->array_type->struc >= ain->nr_enums)
-			return strdup("enum");
-		return type_sprintf("%s#86", ain->enums[v->array_type->struc].name);
 	case AIN_UNKNOWN_TYPE_87:     return strdup("type_87");
 	case AIN_IFACE:
 		if (v->struc == -1 || !ain)
@@ -483,14 +481,18 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 	case AIN_ENUM2:
 	case AIN_ENUM3:
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_enums)
-			return strdup("enum");
+			return v->data == AIN_ENUM2 ? strdup("enum#91") : strdup("enum#92");
 		return type_sprintf("%s#%d", ain->enums[v->struc].name, v->data);
 	case AIN_REF_ENUM:
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_enums)
-			return strdup("enum");
+			return strdup("ref enum");
 		return type_sprintf("ref %s", ain->enums[v->struc].name);
 	case AIN_UNKNOWN_TYPE_95:     return strdup("type_95");
-	case AIN_UNKNOWN_TYPE_100:     return strdup("type_100");
+	case AIN_IFACE_WRAP:
+		// NOTE: this type is always wrapped in an iter, and always carries an interface struct type
+		if (v->struc == -1 || !ain || v->struc >= ain->nr_structures)
+			return strdup("iwrap<?>");
+		return type_sprintf("iwrap<%s>", ain->structures[v->struc].name);
 	default:
 		WARNING("Unknown type: %d", v->data);
 		return type_sprintf("unknown_type_%d", v->data);

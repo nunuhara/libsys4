@@ -330,21 +330,22 @@ enum opcode
         DG_NEW,
         DG_STR_TO_METHOD,
 
+	// instruction names are not known
 	OP_0X102 = 0x102,
-	OP_0X103 = 0x103,
-	OP_0X104 = 0x104,
-	OP_0X105 = 0x105,
-	OP_0X106 = 0x106,
+	X_GETENV = 0x103, // get parent page (in lambda function)
+	X_SET    = 0x104, // some kind of set operation on arrays
+	X_ICAST  = 0x105, // some kind of cast operation on interfaces
+	X_OP_SET = 0x106, // some kind of set operation on option types
 	OP_0X107 = 0x107, // unused
 	OP_0X108 = 0x108, // unused
 	OP_0X109 = 0x109, // unused
-	OP_0X10A = 0x10A,
-	OP_0X10B = 0x10B,
-	OP_0X10C = 0x10C,
-	OP_0X10D = 0x10D,
-	OP_0X10E = 0x10E,
-	OP_0X10F = 0x10F,
-	OP_0X110 = 0x110,
+	X_DUP    = 0x10A, // DUP, but it can copy multiple values
+	X_MOV    = 0x10B, // moves values from the top of the stack to another position
+	X_REF    = 0x10C, // REF, buf it can ref multiple values
+	X_ASSIGN = 0x10D, // ASSIGN, but it can assign multiple values
+	X_A_INIT = 0x10E, // some kind of array intialization operation
+	X_A_SIZE = 0x10F, // gets the size of an array
+	X_TO_STR = 0x110, // converts various types to string
 
 	NR_OPCODES,
 };
@@ -392,7 +393,7 @@ struct instruction {
 	const enum opcode opcode; // the opcode
 	const char * const name;  // assembler name
 	int nr_args;              // number of arguments (???: always 1 or 0?)
-	const int ip_inc;         // amount to increment instruction pointer after instruction
+	int ip_inc;               // amount to increment instruction pointer after instruction
 	const bool implemented;   // implemented in xsystem4
 	int args[INSTRUCTION_MAX_ARGS]; // argument data types
 };
