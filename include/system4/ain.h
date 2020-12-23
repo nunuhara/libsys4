@@ -71,10 +71,10 @@ enum ain_data_type {
 	AIN_REF_ARRAY_LONG_INT = 60,
 	AIN_DELEGATE = 63,
 	AIN_ARRAY_DELEGATE = 66,
-	AIN_UNKNOWN_TYPE_67 = 67, // delegate?
+	AIN_REF_DELEGATE = 67,
 	AIN_REF_ARRAY_DELEGATE = 69,
-	AIN_UNKNOWN_TYPE_74 = 74, // generic array value?
-	AIN_UNKNOWN_TYPE_75 = 75, // generic array value? (ref?)
+	AIN_HLL_PARAM = 74,
+	AIN_REF_HLL_PARAM = 75,
 	AIN_ARRAY = 79,
 	AIN_REF_ARRAY = 80,
 	AIN_WRAP = 82, // some kind of wrapper type
@@ -88,6 +88,7 @@ enum ain_data_type {
 	// has enum type in struct type
 	AIN_ENUM3 = 92,
 	AIN_REF_ENUM = 93,
+	// seems to be predicate function type for array HLL
 	AIN_UNKNOWN_TYPE_95 = 95, // function?
 	// when an interface is wrapped in an AIN_WRAP, this type is used,
 	// probably just to distinguish from a regular struct since interfaces

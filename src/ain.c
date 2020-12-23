@@ -464,10 +464,10 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 	case AIN_REF_ARRAY_LONG_INT:  return array_type_string("ref array@lint", v->rank);
 	case AIN_DELEGATE:            return strdup("delegate");
 	case AIN_ARRAY_DELEGATE:      return array_type_string("array@delegate", v->rank);
+	case AIN_REF_DELEGATE:        return strdup("ref delegate");
 	case AIN_REF_ARRAY_DELEGATE:  return array_type_string("ref array@delegate", v->rank);
-	case AIN_UNKNOWN_TYPE_67:     return strdup("type_67");
-	case AIN_UNKNOWN_TYPE_74:     return strdup("type_74");
-	case AIN_UNKNOWN_TYPE_75:     return strdup("type_75");
+	case AIN_HLL_PARAM:           return strdup("?");
+	case AIN_REF_HLL_PARAM:       return strdup("ref ?");
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
 	case AIN_WRAP:
