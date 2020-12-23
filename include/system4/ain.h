@@ -367,6 +367,7 @@ int ain_add_message(struct ain *ain, const char *str);
 int ain_add_file(struct ain *ain, const char *filename);
 
 void ain_free(struct ain *ain);
+void ain_free_type(struct ain_type *type);
 void ain_free_variables(struct ain_variable *vars, int nr_vars);
 void ain_free_functions(struct ain *ain);
 void ain_free_globals(struct ain *ain);

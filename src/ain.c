@@ -1299,7 +1299,7 @@ struct ain *ain_new(int version)
 	return ain;
 }
 
-static void ain_free_type(struct ain_type *type)
+void ain_free_type(struct ain_type *type)
 {
 	if (!type->array_type)
 		return;
