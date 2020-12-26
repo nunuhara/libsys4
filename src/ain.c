@@ -701,6 +701,9 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 			if (!strcmp(funs[i].name, "AneYume@Initialize")) {
 				ain->minor_version = 1;
 			}
+			if (!strcmp(funs[i].name, "_ALICETOOLS_AINV14_01")) {
+				ain->minor_version = 1;
+			}
 		}
 
 		if (ain->version > 0 && ain->version < 7)
@@ -1234,56 +1237,69 @@ err:
 	return NULL;
 }
 
-struct ain *ain_new(int version)
+struct ain *ain_new(int major_version, int minor_version)
 {
 	struct ain *ain = xcalloc(1, sizeof(struct ain));
 	ain->VERS.present = true;
-	ain->KEYC.present = version < 12;
+	ain->KEYC.present = major_version < 12;
 	ain->CODE.present = true;
 	ain->FUNC.present = true;
 	ain->GLOB.present = true;
-	ain->GSET.present = version < 12;
+	ain->GSET.present = major_version < 12;
 	ain->STRT.present = true;
 	// XXX: Starting with Rance IX, MSG1 section is used instead of MSG0.
 	//      We can't tell from the ain version alone whether MSG0 or MSG1
 	//      should be used since the ain version did not increase with
 	//      this change, but v7+ at least should always use MSG1.
-	ain->MSG0.present = ain->version < 7;
+	ain->MSG0.present = major_version < 7;
 	ain->MSG1.present = !ain->MSG0.present;
 	ain->MAIN.present = true;
-	ain->MSGF.present = true;
+	ain->MSGF.present = major_version < 12;
 	ain->HLL0.present = true;
 	ain->SWI0.present = true;
 	ain->GVER.present = true;
 	ain->STR0.present = true;
-	ain->FNAM.present = ain->version < 12;
-	ain->OJMP.present = ain->version < 7;
+	ain->FNAM.present = major_version < 12;
+	ain->OJMP.present = major_version < 7;
 	// XXX: Another change starting from Rance IX: FNCT section disappears.
 	//      Maybe they just stopped using function types, but still support
 	//      them in the VM? Will need to change this flag when function
 	//      types are added to the ain file.
-	ain->FNCT.present = ain->version < 7;
+	ain->FNCT.present = major_version < 7;
 	// XXX: Starting with Oyako Rankan... earlier v6 games don't have DELG.
 	//      Will need to change this flag when delegates are added to the
 	//      ain file.
-	ain->DELG.present = ain->version >= 7;
-	ain->OBJG.present = ain->version >= 5;
-	ain->ENUM.present = ain->version >= 12;
+	ain->DELG.present = major_version >= 7;
+	ain->OBJG.present = major_version >= 5;
+	ain->ENUM.present = major_version >= 12;
 
-	ain->version = version;
+	ain->version = major_version;
+	ain->minor_version = minor_version;
 	ain->main = -1;
 	ain->msgf = -1;
 	ain->ojmp = -1;
 	ain->game_version = 100;
 
 	ain->nr_functions = 1;
-	ain->functions = xcalloc(1, sizeof(struct ain_function));
+	ain->functions = xcalloc(2, sizeof(struct ain_function));
 	ain->functions[0].name = strdup("NULL");
 	ain->functions[0].return_type = (struct ain_type) {
 		.data = AIN_VOID,
 		.struc = -1,
 		.rank = 0
 	};
+	// XXX: If a minor version is given, we create a fake function so that
+	//      aindump can determine the minor version
+	if (minor_version) {
+		ain->nr_functions = 2;
+		ain->functions[1].name = xmalloc(strlen("_ALICETOOLS_AINVXX_XX")+1);
+		sprintf(ain->functions[1].name, "_ALICETOOLS_AINV%02d_%02d", major_version, minor_version);
+		ain->functions[0].return_type = (struct ain_type) {
+			.data = AIN_VOID,
+			.struc = -1,
+			.rank = 0
+		};
+	}
 
 	ain->nr_messages = 1;
 	ain->messages = xcalloc(1, sizeof(struct string*));
