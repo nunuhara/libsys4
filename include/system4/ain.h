@@ -89,7 +89,7 @@ enum ain_data_type {
 	AIN_ENUM3 = 92,
 	AIN_REF_ENUM = 93,
 	// seems to be predicate function type for array HLL
-	AIN_UNKNOWN_TYPE_95 = 95, // function?
+	AIN_HLL_FUNC = 95,
 	// when an interface is wrapped in an AIN_WRAP, this type is used,
 	// probably just to distinguish from a regular struct since interfaces
 	// have a 2-value representation

@@ -466,8 +466,8 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 	case AIN_ARRAY_DELEGATE:      return array_type_string("array@delegate", v->rank);
 	case AIN_REF_DELEGATE:        return strdup("ref delegate");
 	case AIN_REF_ARRAY_DELEGATE:  return array_type_string("ref array@delegate", v->rank);
-	case AIN_HLL_PARAM:           return strdup("?");
-	case AIN_REF_HLL_PARAM:       return strdup("ref ?");
+	case AIN_HLL_PARAM:           return strdup("hll_param");
+	case AIN_REF_HLL_PARAM:       return strdup("ref hll_param");
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
 	case AIN_WRAP:
@@ -487,7 +487,8 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_enums)
 			return strdup("ref enum");
 		return type_sprintf("ref %s", ain->enums[v->struc].name);
-	case AIN_UNKNOWN_TYPE_95:     return strdup("type_95");
+	case AIN_HLL_FUNC:
+		return strdup("hll_func");
 	case AIN_IFACE_WRAP:
 		// NOTE: this type is always wrapped in an iter, and always carries an interface struct type
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_structures)
