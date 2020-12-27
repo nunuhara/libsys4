@@ -405,7 +405,19 @@ static char *container_type_string(struct ain *ain, struct ain_type *t)
 		: t->data == AIN_OPTION    ? "option"
 		: "unknown_container";
 
-	snprintf(buf, 1023, "%s<%s>", container_type, type);
+	// XXX: need to add space for nested container types to avoid ambiguity
+	//      with '>>' token
+	switch (t->array_type ? t->array_type->data : AIN_VOID) {
+	case AIN_ARRAY:
+	case AIN_REF_ARRAY:
+	case AIN_WRAP:
+	case AIN_IFACE_WRAP:
+	case AIN_OPTION:
+		snprintf(buf, 1023, "%s<%s >", container_type, type);
+		break;
+	default:
+		snprintf(buf, 1023, "%s<%s>", container_type, type);
+	}
 
 	free(type);
 	buf[1023] = '\0';
