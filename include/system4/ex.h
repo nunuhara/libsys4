@@ -100,7 +100,8 @@ struct ex {
 };
 
 uint8_t *ex_decrypt(const char *path, size_t *size, uint32_t *nr_blocks);
-struct ex *ex_read(const char *path);
+struct ex *ex_read(const uint8_t *data, size_t size);
+struct ex *ex_read_file(const char *path);
 void ex_free(struct ex *ex);
 
 void ex_encode(uint8_t *buf, size_t size);

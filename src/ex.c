@@ -24,6 +24,7 @@
 #include "system4.h"
 #include "system4/buffer.h"
 #include "system4/ex.h"
+#include "system4/file.h"
 #include "system4/string.h"
 
 #define EX_ERROR(buf, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
@@ -364,41 +365,23 @@ static void ex_read_block(struct buffer *r, struct ex_block *block)
 
 uint8_t *ex_decrypt(const char *path, size_t *size, uint32_t *nr_blocks)
 {
-	FILE *fp;
-	long len;
-	uint8_t *buf = NULL;
-
-	if (!(fp = fopen(path, "rb")))
-		ERROR("fopen failed: %s", strerror(errno));
-
-	fseek(fp, 0, SEEK_END);
-	len = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-
-	buf = xmalloc(len+1);
-	if (fread(buf, len, 1, fp) != 1)
-		ERROR("fread failed: %s", strerror(errno));
-	if (fclose(fp))
-		ERROR("fclose failed: %s", strerror(errno));
-	buf[len] = '\0';
-
-	*size = len;
-	uint8_t *decoded = ex_decode(buf, size, nr_blocks);
-	free(buf);
+	uint8_t *file_data = file_read(path, size);
+	uint8_t *decoded = ex_decode(file_data, size, nr_blocks);
+	free(file_data);
 	return decoded;
 }
 
-struct ex *ex_read(const char *path)
+static struct ex *_ex_read(uint8_t *data, size_t size)
 {
-	size_t decoded_len;
 	uint32_t nr_blocks;
-	uint8_t *decoded = ex_decrypt(path, &decoded_len, &nr_blocks);
-
+	uint8_t *decoded;
 	struct buffer r;
-	buffer_init(&r, decoded, decoded_len);
+	struct ex *ex;
 
-	struct ex *ex = xmalloc(sizeof(struct ex));
+	decoded = ex_decode(data, &size, &nr_blocks);
+	buffer_init(&r, decoded, size);
+
+	ex = xmalloc(sizeof(struct ex));
 	ex->nr_blocks = nr_blocks;
 	ex->blocks = xcalloc(nr_blocks, sizeof(struct ex_block));
 	for (size_t i = 0; i < nr_blocks; i++) {
@@ -406,6 +389,24 @@ struct ex *ex_read(const char *path)
 	}
 
 	free(decoded);
+	return ex;
+}
+
+struct ex *ex_read(const uint8_t *data, size_t size)
+{
+	uint8_t *copy = xmalloc(size);
+	memcpy(copy, data, size);
+	struct ex *ex = _ex_read(copy, size);
+	free(copy);
+	return ex;
+}
+
+struct ex *ex_read_file(const char *path)
+{
+	size_t size;
+	uint8_t *data = file_read(path, &size);
+	struct ex *ex = ex_read(data, size);
+	free(data);
 	return ex;
 }
 
