@@ -86,7 +86,7 @@ enum ain_data_type {
 	AIN_ENUM2 = 91,
 	// used as argument type, and array type in EnumType::GetList;
 	// has enum type in struct type
-	AIN_ENUM3 = 92,
+	AIN_ENUM = 92,
 	AIN_REF_ENUM = 93,
 	// seems to be predicate function type for array HLL
 	AIN_HLL_FUNC = 95,
@@ -351,6 +351,7 @@ int ain_get_function(struct ain *ain, char *name);
 int ain_get_function_index(struct ain *ain, struct ain_function *f);
 int ain_get_global(struct ain *ain, const char *name);
 int ain_get_struct(struct ain *ain, char *name);
+int ain_get_enum(struct ain *ain, char *name);
 int ain_get_library(struct ain *ain, const char *name);
 int ain_get_library_function(struct ain *ain, int libno, const char *name);
 int ain_get_functype(struct ain *ain, const char *name);

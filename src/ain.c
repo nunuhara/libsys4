@@ -230,6 +230,15 @@ int ain_add_struct(struct ain *ain, struct ain_struct *struc)
 	return ain->nr_structures - 1;
 }
 
+int ain_get_enum(struct ain *ain, char *name)
+{
+	for (int i = 0; i < ain->nr_enums; i++) {
+		if (!strcmp(ain->enums[i].name, name))
+			return i;
+	}
+	return -1;
+}
+
 int ain_add_global(struct ain *ain, struct ain_variable *var)
 {
 	int no = ain->nr_globals;
@@ -491,7 +500,7 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 			return strdup("interface");
 		return strdup(ain->structures[v->struc].name);
 	case AIN_ENUM2:
-	case AIN_ENUM3:
+	case AIN_ENUM:
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_enums)
 			return v->data == AIN_ENUM2 ? strdup("enum#91") : strdup("enum#92");
 		return type_sprintf("%s#%d", ain->enums[v->struc].name, v->data);
