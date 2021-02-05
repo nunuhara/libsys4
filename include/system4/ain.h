@@ -398,4 +398,29 @@ static inline bool ain_is_array_data_type(int32_t type)
 	}
 }
 
+static inline bool ain_is_ref_data_type(enum ain_data_type type)
+{
+	switch (type) {
+	case AIN_REF_INT:
+	case AIN_REF_FLOAT:
+	case AIN_REF_STRING:
+	case AIN_REF_STRUCT:
+	case AIN_REF_ENUM:
+	case AIN_REF_ARRAY_INT:
+	case AIN_REF_ARRAY_FLOAT:
+	case AIN_REF_ARRAY_STRING:
+	case AIN_REF_ARRAY_STRUCT:
+	case AIN_REF_FUNC_TYPE:
+	case AIN_REF_ARRAY_FUNC_TYPE:
+	case AIN_REF_BOOL:
+	case AIN_REF_ARRAY_BOOL:
+	case AIN_REF_LONG_INT:
+	case AIN_REF_ARRAY_LONG_INT:
+	case AIN_REF_ARRAY:
+		return true;
+	default:
+		return false;
+	}
+}
+
 #endif /* SYSTEM4_AIN_H */

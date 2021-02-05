@@ -26,6 +26,7 @@
 #define mem_alloc __attribute__((malloc))
 #define noreturn _Noreturn
 #define possibly_unused __attribute__((unused))
+#define warn_unused __attribute__((warn_unused_result))
 
 #define ERROR(fmt, ...) \
 	sys_error("*ERROR*(%s:%s:%d): " fmt "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__)
