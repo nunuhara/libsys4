@@ -264,8 +264,11 @@ int string_find(const struct string *haystack, const struct string *needle)
 
 int string_get_char(const struct string *str, int i)
 {
-	if ((i = sjis_index(str->text, i)) < 0)
+	// Comparing with the byte length is weird but this is how System4.0 works.
+	if (i < 0 || i > str->size)
 		ERROR("String index out of bounds");
+	if ((i = sjis_index(str->text, i)) < 0)
+		return 0;
 
 	if (SJIS_2BYTE(str->text[i]))
 		return (uint8_t)str->text[i] | ((uint8_t)str->text[i+1] << 8);
@@ -277,8 +280,11 @@ void string_set_char(struct string **_str, int i, unsigned int c)
 	struct string *str = *_str = cow_check(*_str);
 	int bytes_src, bytes_dst;
 
-	if ((i = sjis_index(str->text, i)) < 0)
+	// Comparing with the byte length is weird but this is how System4.0 works.
+	if (i < 0 || i >= str->size)
 		ERROR("String index out of bounds");
+	if ((i = sjis_index(str->text, i)) < 0)
+		return;
 
 	bytes_src = SJIS_2BYTE(c) ? 2 : 1;
 	bytes_dst = SJIS_2BYTE(str->text[i]) ? 2 : 1;
