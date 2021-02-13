@@ -23,6 +23,7 @@
 #include "system4/file.h"
 #include "system4/ajp.h"
 #include "system4/dcf.h"
+#include "system4/pms.h"
 #include "system4/png.h"
 #include "system4/qnt.h"
 #include "system4/webp.h"
@@ -55,6 +56,10 @@ enum cg_type cg_check_format(uint8_t *data)
 		return ALCG_WEBP;
 	} else if (dcf_checkfmt(data)) {
 		return ALCG_DCF;
+	} else if (pms8_checkfmt(data)) {
+		return ALCG_PMS8;
+	} else if (pms16_checkfmt(data)) {
+		return ALCG_PMS16;
 	}
 	return ALCG_UNKNOWN;
 }
@@ -82,6 +87,10 @@ bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst)
 		break;
 	case ALCG_DCF:
 		dcf_get_metrics(dfile->data, dfile->size, dst);
+		break;
+	case ALCG_PMS8:
+	case ALCG_PMS16:
+		pms_get_metrics(dfile->data, dst);
 		break;
 	default:
 		WARNING("Unknown CG type (CG %d)", no);
@@ -123,6 +132,10 @@ static struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size, struct archive *
 		break;
 	case ALCG_DCF:
 		dcf_extract(buf, buf_size, cg);
+		break;
+	case ALCG_PMS8:
+	case ALCG_PMS16:
+		pms_extract(buf, buf_size, cg);
 		break;
 	default:
 		WARNING("Unknown CG type");

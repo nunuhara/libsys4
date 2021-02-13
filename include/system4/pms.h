@@ -26,6 +26,7 @@ struct cg;
 bool pms_checkfmt(const uint8_t *data);
 bool pms8_checkfmt(const uint8_t *data);
 bool pms16_checkfmt(const uint8_t *data);
+bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst);
 void pms_extract(const uint8_t *data, size_t size, struct cg *cg);
 uint8_t *pms_extract_mask(const uint8_t *data, size_t size);
 

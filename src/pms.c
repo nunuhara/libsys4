@@ -67,7 +67,7 @@ bool pms8_checkfmt(const uint8_t *data)
 
 bool pms16_checkfmt(const uint8_t *data)
 {
-	return pms_checkfmt(data) && data[7] == 16;
+	return pms_checkfmt(data) && data[6] == 16;
 }
 
 static struct cg_palette *pms_get_palette(const uint8_t *b)
@@ -268,6 +268,14 @@ static void pms_init_metrics(struct pms_header *pms, struct cg_metrics *dst)
 	dst->alpha_pitch = 1;
 }
 
+bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst)
+{
+	struct pms_header pms;
+	pms_read_header(&pms, data);
+	pms_init_metrics(&pms, dst);
+	return true;
+}
+
 /* Load a PMS8 CG. */
 static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
 {
@@ -278,17 +286,31 @@ static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg
 	// TODO: convert to RGBA
 }
 
+static uint32_t RGB565to8888(uint16_t pc, uint8_t a)
+{
+	unsigned r = pc & 0xf800;
+	unsigned g = pc & 0x07e0;
+	unsigned b = pc & 0x001f;
+	r = r >> 8 | r >> 13;
+	g = g >> 3 | g >> 9;
+	b = b << 3 | b >> 2;
+	return r | g << 8 | b << 16 | a << 24;
+}
+
 static void pms16_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
 {
 	cg->type = ALCG_PMS16;
-	cg->pixels = pms16_extract(pms, data + pms->dp);
+	uint16_t *pixels = pms16_extract(pms, data + pms->dp);
+	uint8_t *alpha = pms->pp ? pms8_extract(pms, data + pms->pp) : NULL;
 
-	if (pms->pp) {
-		// TODO: alpha channel
-		//uint8_t *alpha = malloc((pms->width + 10) * (pms->height + 10));
-		//pms8_extract(pms, alpha, data + pms->pp);
-	}
-	// TODO: convert to RGBA
+	// Convert to RGBA
+	cg->pixels = xmalloc(pms->width * pms->height * 4);
+	uint32_t *dst = cg->pixels;
+	for (int i = 0; i < pms->width * pms->height; i++)
+		dst[i] = RGB565to8888(pixels[i], alpha ? alpha[i] : 0xff);
+
+	free(pixels);
+	free(alpha);
 }
 
 void pms_extract(const uint8_t *data, size_t size, struct cg *cg)
