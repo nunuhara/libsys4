@@ -149,60 +149,8 @@ static void afa_free(struct archive *_ar)
 	free(ar);
 }
 
-static bool afa_read_header(FILE *f, struct afa_archive *ar, int *error)
-{
-	char buf[44];
-	if (fread(buf, 44, 1, f) != 1) {
-		*error = ARCHIVE_FILE_ERROR;
-		return false;
-	}
-
-	fseek(f, 0, SEEK_END);
-	ar->file_size = ftell(f);
-	fseek(f, 0, SEEK_SET);
-
-	if (strncmp(buf,    "AFAH",      4) ||
-	    strncmp(buf+8,  "AlicArch", 8) ||
-	    strncmp(buf+28, "INFO",      4) ||
-	    LittleEndian_getDW((uint8_t*)buf, 4) != 0x1c) {
-		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
-		return false;
-	}
-
-	ar->version = LittleEndian_getDW((uint8_t*)buf, 16);
-	ar->unknown = LittleEndian_getDW((uint8_t*)buf, 20);
-	ar->data_start = LittleEndian_getDW((uint8_t*)buf, 24);
-	ar->compressed_size = LittleEndian_getDW((uint8_t*)buf, 32) - 16;
-	ar->uncompressed_size = LittleEndian_getDW((uint8_t*)buf, 36);
-	ar->nr_files = LittleEndian_getDW((uint8_t*)buf, 40);
-
-	if (ar->data_start+8 >= ar->file_size) {
-		*error = ARCHIVE_FILE_ERROR;
-		return false;
-	}
-
-	fseek(f, ar->data_start, SEEK_SET);
-	if (fread(buf, 8, 1, f) != 1) {
-		*error = ARCHIVE_FILE_ERROR;
-		return false;
-	}
-	fseek(f, 0, SEEK_SET);
-
-	if (strncmp(buf, "DATA", 4)) {
-		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
-		return false;
-	}
-
-	ar->data_size = LittleEndian_getDW((uint8_t*)buf, 4);
-	if (ar->data_start + ar->data_size > ar->file_size) {
-		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
-		return false;
-	}
-
-	return true;
-}
-
-static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa_entry *entry, int *error)
+static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa_entry *entry,
+			   possibly_unused int *error)
 {
 	uint32_t name_len = buffer_read_int32(in);
 	entry->name = buffer_read_pascal_string(in); // NOTE: length is padded
@@ -253,6 +201,72 @@ exit_err:
 	return false;
 }
 
+bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error);
+
+static bool afa_read_metadata(FILE *f, struct afa_archive *ar, int *error)
+{
+	char buf[44];
+	if (fread(buf, 44, 1, f) != 1) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+
+	fseek(f, 0, SEEK_END);
+	ar->file_size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	if (strncmp(buf, "AFAH", 4)) {
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	if (strncmp(buf+8, "AlicArch", 8)) {
+		if (LittleEndian_getDW((uint8_t*)buf, 8) == 3) {
+			return afa3_read_metadata(buf, f, ar, error);
+		}
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	if (strncmp(buf+28, "INFO", 4) ||
+	    LittleEndian_getDW((uint8_t*)buf, 4) != 0x1c) {
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	ar->version = LittleEndian_getDW((uint8_t*)buf, 16);
+	ar->unknown = LittleEndian_getDW((uint8_t*)buf, 20);
+	ar->data_start = LittleEndian_getDW((uint8_t*)buf, 24);
+	ar->compressed_size = LittleEndian_getDW((uint8_t*)buf, 32) - 16;
+	ar->uncompressed_size = LittleEndian_getDW((uint8_t*)buf, 36);
+	ar->nr_files = LittleEndian_getDW((uint8_t*)buf, 40);
+
+	if (ar->data_start+8 >= ar->file_size) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+
+	fseek(f, ar->data_start, SEEK_SET);
+	if (fread(buf, 8, 1, f) != 1) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	fseek(f, 0, SEEK_SET);
+
+	if (strncmp(buf, "DATA", 4)) {
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	ar->data_size = LittleEndian_getDW((uint8_t*)buf, 4);
+	if (ar->data_start + ar->data_size > ar->file_size) {
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	return afa_read_file_table(f, ar, error);
+}
+
 struct afa_archive *afa_open(const char *file, int flags, int *error)
 {
 #ifdef _WIN32
@@ -266,13 +280,8 @@ struct afa_archive *afa_open(const char *file, int flags, int *error)
 		*error = ARCHIVE_FILE_ERROR;
 		goto exit_err;
 	}
-	if (!afa_read_header(fp, ar, error)) {
-		WARNING("afa_read_header failed");
-		fclose(fp);
-		goto exit_err;
-	}
-	if (!afa_read_file_table(fp, ar, error)) {
-		WARNING("afa_read_file_table failed");
+	if (!afa_read_metadata(fp, ar, error)) {
+		WARNING("afa_read_metadata failed");
 		fclose(fp);
 		goto exit_err;
 	}
