@@ -31,10 +31,10 @@ typedef uint32_t ain_addr_t;
 struct string;
 
 enum ain_error {
-	AIN_SUCCESS,
-	AIN_FILE_ERROR,
-	AIN_UNRECOGNIZED_FORMAT,
-	AIN_INVALID,
+	AIN_SUCCESS = 0,
+	AIN_FILE_ERROR = 1,
+	AIN_UNRECOGNIZED_FORMAT = 2,
+	AIN_INVALID = 3,
 	AIN_MAX_ERROR
 };
 
@@ -357,12 +357,13 @@ int ain_get_library_function(struct ain *ain, int libno, const char *name);
 int ain_get_functype(struct ain *ain, const char *name);
 int ain_get_string_no(struct ain *ain, const char *str);
 
-int ain_add_function(struct ain *ain, struct ain_function *fun);
-int ain_add_global(struct ain *ain, struct ain_variable *var);
-int ain_add_initval(struct ain *ain, struct ain_initval *init);
-int ain_add_struct(struct ain *ain, struct ain_struct *struc);
-int ain_add_library(struct ain *ain, struct ain_library *lib);
-int ain_add_functype(struct ain *ain, struct ain_function_type *fun);
+int ain_add_function(struct ain *ain, const char *name);
+int ain_dup_function(struct ain *ain, int no);
+int ain_add_global(struct ain *ain, const char *name);
+int ain_add_initval(struct ain *ain, int global_index);
+int ain_add_struct(struct ain *ain, const char *name);
+int ain_add_library(struct ain *ain, const char *name);
+int ain_add_functype(struct ain *ain, const char *name);
 int ain_add_string(struct ain *ain, const char *str);
 int ain_add_message(struct ain *ain, const char *str);
 int ain_add_file(struct ain *ain, const char *filename);

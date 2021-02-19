@@ -221,13 +221,16 @@ int ain_get_struct(struct ain *ain, char *name)
 	return s ? s - ain->structures : -1;
 }
 
-int ain_add_struct(struct ain *ain, struct ain_struct *struc)
+int ain_add_struct(struct ain *ain, const char *name)
 {
-	ain->structures = xrealloc_array(ain->structures, ain->nr_structures, ain->nr_structures+1, sizeof(struct ain_struct));
-	ain->structures[ain->nr_structures] = *struc;
-	struct_ht_add(ain, &ain->structures[ain->nr_structures]);
+	int no = ain->nr_structures;
+	ain->structures = xrealloc_array(ain->structures, no, no+1, sizeof(struct ain_struct));
+	ain->structures[no].name = strdup(name);
+	ain->structures[no].constructor = -1;
+	ain->structures[no].destructor = -1;
+	struct_ht_add(ain, &ain->structures[no]);
 	ain->nr_structures++;
-	return ain->nr_structures - 1;
+	return no;
 }
 
 int ain_get_enum(struct ain *ain, char *name)
@@ -239,11 +242,11 @@ int ain_get_enum(struct ain *ain, char *name)
 	return -1;
 }
 
-int ain_add_global(struct ain *ain, struct ain_variable *var)
+int ain_add_global(struct ain *ain, const char *name)
 {
 	int no = ain->nr_globals;
 	ain->globals = xrealloc_array(ain->globals, ain->nr_globals, ain->nr_globals+1, sizeof(struct ain_variable));
-	ain->globals[no] = *var;
+	ain->globals[no].name = strdup(name);
 	if (AIN_VERSION_GTE(ain, 12, 0))
 		ain->globals[no].name2 = strdup("");
 	ain->globals[no].var_type = AIN_VAR_GLOBAL;
@@ -260,29 +263,66 @@ int ain_get_global(struct ain *ain, const char *name)
 	return -1;
 }
 
-int ain_add_initval(struct ain *ain, struct ain_initval *init)
+int ain_add_initval(struct ain *ain, int global_index)
 {
-	ain->global_initvals = xrealloc_array(ain->global_initvals, ain->nr_initvals, ain->nr_initvals+1,
-					      sizeof(struct ain_initval));
-	ain->global_initvals[ain->nr_initvals++] = *init;
-	return ain->nr_initvals - 1;
+	int no = ain->nr_initvals;
+	ain->global_initvals = xrealloc_array(ain->global_initvals, no, no+1, sizeof(struct ain_initval));
+	ain->global_initvals[no].global_index = global_index;
+	ain->nr_initvals++;
+	return no;
 }
 
-int ain_add_function(struct ain *ain, struct ain_function *fun)
+int ain_add_function(struct ain *ain, const char *name)
 {
 	int no = ain->nr_functions;
-	ain->functions = xrealloc_array(ain->functions, no, no+1, sizeof (struct ain_function));
-	ain->functions[no] = *fun;
+	ain->functions = xrealloc_array(ain->functions, no, no+1, sizeof(struct ain_function));
+	ain->functions[no].name = strdup(name);
 	func_ht_add(ain, no);
 	ain->nr_functions++;
 	return no;
 }
 
-int ain_add_functype(struct ain *ain, struct ain_function_type *fun)
+static void copy_type(struct ain_type *dst, struct ain_type *src)
+{
+	*dst = *src;
+	if (ain_is_array_data_type(src->data)) {
+		dst->array_type = xcalloc(src->rank, sizeof(struct ain_type));
+		for (int i = 0; i < src->rank; i++) {
+			copy_type(dst->array_type + i, src->array_type + i);
+		}
+	}
+}
+
+int ain_dup_function(struct ain *ain, int src_no)
+{
+	int dst_no = ain->nr_functions;
+	ain->functions = xrealloc_array(ain->functions, dst_no, dst_no+1, sizeof(struct ain_function));
+
+	struct ain_function *src = &ain->functions[src_no];
+	struct ain_function *dst = &ain->functions[dst_no];
+
+	*dst = *src;
+	dst->name = strdup(src->name);
+	copy_type(&dst->return_type, &src->return_type);
+	dst->vars = xcalloc(src->nr_vars, sizeof(struct ain_variable));
+	for (int i = 0; i < src->nr_vars; i++) {
+		dst->vars[i] = src->vars[i];
+		dst->vars[i].name = strdup(src->vars[i].name);
+		if (src->vars[i].name2) {
+			dst->vars[i].name2 = strdup(src->vars[i].name2);
+		}
+		copy_type(&dst->vars[i].type, &src->vars[i].type);
+	}
+	func_ht_add(ain, dst_no);
+	ain->nr_functions++;
+	return dst_no;
+}
+
+int ain_add_functype(struct ain *ain, const char *name)
 {
 	int no = ain->nr_function_types;
 	ain->function_types = xrealloc_array(ain->function_types, no, no+1, sizeof(struct ain_function_type));
-	ain->function_types[no] = *fun;
+	ain->function_types[no].name = strdup(name);
 	ain->nr_function_types++;
 	return no;
 }
@@ -329,11 +369,11 @@ int ain_add_file(struct ain *ain, const char *filename)
 	return ain->nr_filenames - 1;
 }
 
-int ain_add_library(struct ain *ain, struct ain_library *lib)
+int ain_add_library(struct ain *ain, const char *name)
 {
 	int no = ain->nr_libraries;
 	ain->libraries = xrealloc_array(ain->libraries, no, no+1, sizeof(struct ain_library));
-	ain->libraries[no] = *lib;
+	ain->libraries[no].name = strdup(name);
 	ain->nr_libraries++;
 	return no;
 }
