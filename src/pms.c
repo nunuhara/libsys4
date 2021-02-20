@@ -276,14 +276,27 @@ bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst)
 	return true;
 }
 
+static uint32_t indexed_to_RGBA(struct cg_palette *pal, uint8_t i)
+{
+	return pal->red[i] | pal->green[i] << 8 | pal->blue[i] << 16 | 0xff000000;
+}
+
 /* Load a PMS8 CG. */
 static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
 {
 	cg->pal = pms_get_palette(data + pms->pp);
 
 	cg->type = ALCG_PMS8;
-	cg->pixels = pms8_extract(pms, data + pms->dp);
-	// TODO: convert to RGBA
+	uint8_t *pixels = pms8_extract(pms, data + pms->dp);
+
+	// Convert to RGBA
+	cg->pixels = xmalloc(pms->width * pms->height * 4);
+	uint32_t *dst = cg->pixels;
+	for (int i = 0; i < pms->width * pms->height; i++) {
+		dst[i] = indexed_to_RGBA(cg->pal, pixels[i]);
+	}
+
+	free(pixels);
 }
 
 static uint32_t RGB565to8888(uint16_t pc, uint8_t a)
