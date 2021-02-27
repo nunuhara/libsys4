@@ -32,6 +32,7 @@
 #include "system4/ain.h"
 #include "system4/hashtable.h"
 #include "system4/instructions.h"
+#include "system4/mt19937int.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
 
@@ -1157,60 +1158,12 @@ static uint8_t *decompress_ain(uint8_t *in, long *len)
 	return out;
 }
 
-static uint32_t temper(uint32_t in)
-{
-	in ^= (in >> 11);
-	in ^= (in << 7)  & 0x9D2C5680;
-	in ^= (in << 15) & 0xEFC60000;
-	in ^= (in >> 18);
-	return in;
-}
-
-static void update(uint32_t *state)
-{
-	int ahead = 0x18D;
-	int write = 0;
-	int read = 2;
-	uint32_t current = state[1];
-	uint32_t last = state[0];
-	uint32_t tmp;
-
-	for (int i = 0; i < 0x270; i++) {
-		tmp = (((current ^ last) & 0x7FFFFFFE) ^ last) >> 1;
-		tmp = (current & 1) ? (tmp ^ 0x9908B0DF) : tmp;
-		state[write] = tmp ^ state[ahead];
-		last = current;
-		current = state[read];
-		write++;
-		read++;
-		ahead++;
-		while (read >= 0x270)
-			read -= 0x270;
-		while (ahead >= 0x270)
-			ahead -= 0x270;
-	}
-}
-
 void ain_decrypt(uint8_t *buf, size_t len)
 {
-	uint32_t state[0x270];
-	uint32_t key = 0x5D3E3;
-	int off = 0;
-
-	for (int i = 0; i < 0x270; i++) {
-		state[i] = key;
-		key *= 0x10DCD;
-	}
-
-	update(state);
-	for (size_t i = 0; i < len; i++) {
-		if (off >= 0x270) {
-			update(state);
-			off = 0;
-		}
-		buf[i] ^= (uint8_t)(temper(state[off]) & 0xFF);
-		off++;
-	}
+	struct mt19937 mt;
+	mt19937_init(&mt, 0x5D3E3);
+	for (size_t i = 0; i < len; i++)
+		buf[i] ^= mt19937_genrand(&mt);
 }
 
 static bool ain_is_encrypted(uint8_t *buf)
