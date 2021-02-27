@@ -17,7 +17,16 @@
 #ifndef SYSTEM4_MT19937INT_H
 #define SYSTEM4_MT19937INT_H
 
-void sgenrand(unsigned long seed);
-unsigned long genrand(void);
+#include <stdint.h>
+
+#define MT19937_STATE_SIZE 624
+
+struct mt19937 {
+	uint32_t st[MT19937_STATE_SIZE];
+	int i;
+};
+
+void mt19937_init(struct mt19937 *mt, uint32_t seed);
+uint32_t mt19937_genrand(struct mt19937 *mt);
 
 #endif /* SYSTEM4_MT19937INT_H */
