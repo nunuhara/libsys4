@@ -769,7 +769,7 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 			}
 		}
 
-		if (ain->version > 0 && ain->version < 7)
+		if (ain->version > 1 && ain->version < 7)
 			funs[i].is_label = read_int32(r);
 
 		read_return_type(r, &funs[i].return_type, ain);
@@ -784,7 +784,7 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 			}
 		}
 
-		if (ain->version > 0) {
+		if (ain->version > 1) {
 			funs[i].crc = read_int32(r);
 		}
 		if (funs[i].nr_vars > 0) {
@@ -923,6 +923,16 @@ static struct ain_switch *read_switches(struct ain_reader *r, int count)
 		switches[i].cases = read_switch_cases(r, switches[i].nr_cases, &switches[i]);
 	}
 	return switches;
+}
+
+static struct ain_scenario_label *read_scenario_labels(struct ain_reader *r, int count)
+{
+	struct ain_scenario_label *labels = xcalloc(count, sizeof(struct ain_scenario_label));
+	for (int i = 0; i < count; i++) {
+		labels[i].name = read_string(r);
+		labels[i].address = read_int32(r);
+	}
+	return labels;
 }
 
 static struct ain_function_type *read_function_types(struct ain_reader *r, int count, struct ain *ain)
@@ -1080,6 +1090,11 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 	} else if (TAG_EQ("GVER")) {
 		start_section(r, &ain->GVER);
 		ain->game_version = read_int32(r);
+	} else if (TAG_EQ("SLBL")) {
+		start_section(r, &ain->SLBL);
+		ain->SLBL.present = true;
+		ain->nr_scenario_labels = read_int32(r);
+		ain->scenario_labels = read_scenario_labels(r, ain->nr_scenario_labels);
 	} else if (TAG_EQ("STR0")) {
 		start_section(r, &ain->STR0);
 		ain->nr_strings = read_int32(r);
@@ -1273,6 +1288,7 @@ struct ain *ain_new(int major_version, int minor_version)
 	ain->HLL0.present = true;
 	ain->SWI0.present = true;
 	ain->GVER.present = true;
+	ain->SLBL.present = major_version == 1;
 	ain->STR0.present = true;
 	ain->FNAM.present = major_version < 12;
 	ain->OJMP.present = major_version < 7;
@@ -1455,6 +1471,16 @@ void ain_free_switches(struct ain *ain)
 	ain->nr_switches = 0;
 }
 
+void ain_free_scenario_labels(struct ain *ain)
+{
+	for (int i = 0; i < ain->nr_scenario_labels; i++) {
+		free(ain->scenario_labels[i].name);
+	}
+	free(ain->scenario_labels);
+	ain->scenario_labels = NULL;
+	ain->nr_scenario_labels = 0;
+}
+
 void ain_free_strings(struct ain *ain)
 {
 	ain_free_vmstrings(ain->strings, ain->nr_strings);
@@ -1519,6 +1545,7 @@ void ain_free(struct ain *ain)
 	ain_free_messages(ain);
 	ain_free_libraries(ain);
 	ain_free_switches(ain);
+	ain_free_scenario_labels(ain);
 	ain_free_strings(ain);
 	ain_free_filenames(ain);
 	ain_free_function_types(ain);

@@ -246,6 +246,11 @@ struct ain_switch {
 	struct ain_switch_case *cases;
 };
 
+struct ain_scenario_label {
+	char *name;
+	ain_addr_t address;
+};
+
 struct ain_function_type {
 	char *name;
 	struct ain_type return_type;
@@ -292,6 +297,8 @@ struct ain {
 	int32_t nr_switches;
 	struct ain_switch *switches;
 	int32_t game_version;
+	int32_t nr_scenario_labels;
+	struct ain_scenario_label *scenario_labels;
 	int32_t nr_strings;
 	struct string **strings;
 	int32_t nr_filenames;
@@ -323,6 +330,7 @@ struct ain {
 	struct ain_section HLL0;
 	struct ain_section SWI0;
 	struct ain_section GVER;
+	struct ain_section SLBL;
 	struct ain_section STR0;
 	struct ain_section FNAM;
 	struct ain_section OJMP;
@@ -378,6 +386,7 @@ void ain_free_structures(struct ain *ain);
 void ain_free_messages(struct ain *ain);
 void ain_free_libraries(struct ain *ain);
 void ain_free_switches(struct ain *ain);
+void ain_free_scenario_labels(struct ain *ain);
 void ain_free_strings(struct ain *ain);
 void ain_free_filenames(struct ain *ain);
 void ain_free_function_types(struct ain *ain);
