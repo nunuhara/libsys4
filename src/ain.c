@@ -286,11 +286,9 @@ int ain_add_function(struct ain *ain, const char *name)
 static void copy_type(struct ain_type *dst, struct ain_type *src)
 {
 	*dst = *src;
-	if (ain_is_array_data_type(src->data)) {
-		dst->array_type = xcalloc(src->rank, sizeof(struct ain_type));
-		for (int i = 0; i < src->rank; i++) {
-			copy_type(dst->array_type + i, src->array_type + i);
-		}
+	if (src->array_type) {
+		dst->array_type = xcalloc(1, sizeof(struct ain_type));
+		copy_type(dst->array_type, src->array_type);
 	}
 }
 
@@ -677,16 +675,10 @@ static struct string **read_msg1_strings(struct ain_reader *r, int count)
 
 static void read_variable_type(struct ain_reader *r, struct ain_type *t);
 
-static struct ain_type *read_array_type(struct ain_reader *r, int rank)
+static struct ain_type *read_array_type(struct ain_reader *r)
 {
-	if (rank <= 0)
-		ERROR("Invalid array rank: %d", rank);
-
-	struct ain_type *type = xcalloc(rank, sizeof(struct ain_type));
-	for (int i = 0; i < rank; i++) {
-		read_variable_type(r, type+i);
-	}
-
+	struct ain_type *type = xcalloc(1, sizeof(struct ain_type));
+	read_variable_type(r, type);
 	return type;
 }
 
@@ -716,8 +708,18 @@ static void read_variable_type(struct ain_reader *r, struct ain_type *t)
 	t->struc = read_int32(r);
 	t->rank  = read_int32(r);
 
-	if (ain_is_array_data_type(t->data))
-		t->array_type = read_array_type(r, t->rank);
+	// XXX: in v11+, 'rank' is a boolean which indicates the presence or
+	//      absence of an additional sub-type (which may itself have a
+	//      sub-type, etc.). Arrays no longer have ranks, but are instead
+	//      nested. Also, the struct type of the most deeply nested type
+	//      is propagated to all parent types for some reason (e.g. an
+	//      array of struct#13 will have struct type 13).
+	if (AIN_VERSION_GTE(r->ain, 11, 0)) {
+		if (t->rank < 0 || t->rank > 1)
+			ERROR("non-boolean rank in ain v11+ (%d, %d, %d)", t->data, t->struc, t->rank);
+		if (t->rank)
+			t->array_type = read_array_type(r);
+	}
 }
 
 static struct ain_variable *read_variables(struct ain_reader *r, int count, struct ain *ain, enum ain_variable_type var_type)
@@ -1348,13 +1350,10 @@ struct ain *ain_new(int major_version, int minor_version)
 
 void ain_free_type(struct ain_type *type)
 {
-	if (!type->array_type)
-		return;
-
-	for (int i = 0; i < type->rank; i++) {
-		ain_free_type(&type->array_type[i]);
+	if (type->array_type) {
+		ain_free_type(type->array_type);
+		free(type->array_type);
 	}
-	free(type->array_type);
 }
 
 void ain_free_variables(struct ain_variable *vars, int nr_vars)
