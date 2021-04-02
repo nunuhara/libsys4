@@ -24,41 +24,13 @@
 #include "system4/buffer.h"
 #include "system4/cg.h"
 #include "system4/file.h"
-
-enum flat_data_type {
-	FLAG_CG  = 2,
-	FLAT_ZLIB = 5,
-};
-
-struct flat_entry {
-	size_t off;
-	size_t size;
-	int type;
-};
-
-struct flat_data {
-	struct archive_data super;
-	struct flat_entry *entry;
-	bool allocated;
-};
-
-struct flat_archive {
-	struct archive ar;
-	bool allocated;
-	size_t libl_off;
-	size_t talt_off;
-	size_t filesize;
-	unsigned nr_libl_files;
-	struct flat_entry *libl_files;
-	unsigned nr_talt_files;
-	struct flat_entry *talt_files;
-	uint8_t *data;
-};
+#include "system4/flat.h"
+#include "system4/string.h"
 
 static const char *get_file_extension(int type, const char *data)
 {
 	switch (type) {
-	case FLAG_CG:
+	case FLAT_CG:
 		if (!strncmp(data, "AJP", 4))
 			return ".ajp";
 		if (!strncmp(data, "QNT", 4))
@@ -83,38 +55,51 @@ static void flat_free_data(struct archive_data *data)
 static void flat_free(struct archive *_ar)
 {
 	struct flat_archive *ar = (struct flat_archive*)_ar;
-	if (ar->allocated)
-		free(ar->data);
-	free(ar->libl_files);
-	free(ar->talt_files);
+	free(ar->data);
+	free(ar->libl_entries);
+	for (unsigned i = 0; i < ar->nr_talt_entries; i++) {
+		free(ar->talt_entries[i].metadata);
+	}
+	free(ar->talt_entries);
 	free(ar);
 }
 
-static struct flat_entry *flat_get_entry(struct flat_archive *ar, unsigned no)
+static bool flat_get_entry(struct flat_archive *ar, unsigned no, struct flat_data *dst)
 {
-	if (no < ar->nr_libl_files)
-		return &ar->libl_files[no];
+	if (no < ar->nr_libl_entries) {
+		dst->off = ar->libl_entries[no].off;
+		dst->size = ar->libl_entries[no].size;
+		dst->type = ar->libl_entries[no].type;
+		return true;
+	}
 
-	no -= ar->nr_libl_files;
-	if (no < ar->nr_talt_files)
-		return &ar->talt_files[no];
+	no -= ar->nr_libl_entries;
+	if (no < ar->nr_talt_entries) {
+		dst->off = ar->talt_entries[no].off;
+		dst->size = ar->talt_entries[no].size;
+		dst->type = FLAT_CG;
+		return true;
+	}
 
-	return NULL;
+	return false;
 }
 
 static struct archive_data *flat_get(struct archive *_ar, int no)
 {
 	struct flat_archive *ar = (struct flat_archive*)_ar;
-	struct flat_entry *e = flat_get_entry(ar, no);
 	struct flat_data *data = xcalloc(1, sizeof(struct flat_data));
 
-	data->super.data = ar->data + e->off;
-	data->super.size = e->size;
+	if (!flat_get_entry(ar, no, data)) {
+		free(data);
+		return NULL;
+	}
+
+	data->super.data = ar->data + data->off;
+	data->super.size = data->size;
 	data->super.name = xmalloc(256);
-	snprintf(data->super.name, 256, "%d%s", no, get_file_extension(e->type, (const char*)ar->data+e->off));
+	snprintf(data->super.name, 256, "%d%s", no, get_file_extension(data->type, (const char*)ar->data+data->off));
 	data->super.no = no;
 	data->super.archive = _ar;
-	data->entry = e;
 	return &data->super;
 }
 
@@ -122,13 +107,12 @@ static bool flat_load_file(possibly_unused struct archive_data *data)
 {
 	struct flat_archive *ar = (struct flat_archive*)data->archive;
 	struct flat_data *flatdata = (struct flat_data*)data;
-	struct flat_entry *e = flatdata->entry;
 
 	// inflate zlib compressed data
-	if (e->type == FLAT_ZLIB && ar->data[e->off+4] == 0x78) {
-		unsigned long size = LittleEndian_getDW(ar->data, e->off);
+	if (flatdata->type == FLAT_ZLIB && ar->data[flatdata->off+4] == 0x78) {
+		unsigned long size = LittleEndian_getDW(ar->data, flatdata->off);
 		uint8_t *out = xmalloc(size);
-		if (uncompress(out, &size, ar->data + e->off + 4, e->size - 4) != Z_OK) {
+		if (uncompress(out, &size, ar->data + flatdata->off + 4, flatdata->size - 4) != Z_OK) {
 			WARNING("uncompress failed");
 			free(out);
 			return false;
@@ -144,7 +128,7 @@ static bool flat_load_file(possibly_unused struct archive_data *data)
 static void flat_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user)
 {
 	struct flat_archive *ar = (struct flat_archive*)_ar;
-	for (unsigned i = 0; i < ar->nr_libl_files + ar->nr_talt_files; i++) {
+	for (unsigned i = 0; i < ar->nr_libl_entries + ar->nr_talt_entries; i++) {
 		struct archive_data *data = flat_get(_ar, i);
 		if (!data)
 			continue;
@@ -170,154 +154,140 @@ static bool is_image(const char *data)
 	return false;
 }
 
-static void read_libl(uint8_t *data, size_t size, struct flat_archive *ar)
+static void read_libl(struct flat_archive *ar)
 {
-	struct buffer r;
-	buffer_init(&r, data, size);
+	if (!ar->libl.present)
+		return;
 
-	buffer_skip(&r, 8);
-	ar->nr_libl_files = buffer_read_int32(&r);
-	ar->libl_files = xcalloc(ar->nr_libl_files, sizeof(struct flat_entry));
-	for (unsigned i = 0; i < ar->nr_libl_files; i++) {
-		int len = buffer_read_int32(&r);
-		buffer_skip(&r, len);
+	struct buffer r;
+	buffer_init(&r, ar->data + ar->libl.off + 8, ar->libl.size);
+
+	ar->nr_libl_entries = buffer_read_int32(&r);
+	ar->libl_entries = xcalloc(ar->nr_libl_entries, sizeof(struct libl_entry));
+	for (unsigned i = 0; i < ar->nr_libl_entries; i++) {
+		ar->libl_entries[i].unknown_size = buffer_read_int32(&r);
+		ar->libl_entries[i].unknown_off = ar->libl.off + r.index + 8;
+		buffer_skip(&r, ar->libl_entries[i].unknown_size);
 		buffer_align(&r, 4);
 
-		ar->libl_files[i].type = buffer_read_int32(&r);
-		ar->libl_files[i].size = buffer_read_int32(&r);
-		ar->libl_files[i].off = ar->libl_off + r.index;
+		ar->libl_entries[i].type = buffer_read_int32(&r);
+		ar->libl_entries[i].size = buffer_read_int32(&r);
+		ar->libl_entries[i].off = ar->libl.off + r.index + 8;
 
-		if (ar->libl_files[i].type == FLAG_CG && !is_image(buffer_strdata(&r))) {
+		if (ar->libl_entries[i].type == FLAT_CG && !is_image(buffer_strdata(&r))) {
 			// XXX: special case: CG usually (not always!) has extra int32
 			if (is_image(buffer_strdata(&r)+4)) {
-				ar->libl_files[i].off += 4;
-				ar->libl_files[i].size -= 4;
+				ar->libl_entries[i].off += 4;
+				ar->libl_entries[i].size -= 4;
 				buffer_skip(&r, 4);
 			} else {
 				WARNING("Couldn't read CG data in LIBL section");
 			}
 		}
 
-		buffer_skip(&r, ar->libl_files[i].size);
+		buffer_skip(&r, ar->libl_entries[i].size);
 		buffer_align(&r, 4);
 	}
 
-	if (r.index != size)
+	if (r.index != ar->libl.size)
 		WARNING("Junk at end of LIBL section");
 }
 
-static void read_talt(uint8_t *data, size_t size, struct flat_archive *ar)
+static void read_talt(struct flat_archive *ar)
 {
-	if (size < 16)
+	if (!ar->talt.present)
 		return;
 
 	struct buffer r;
-	buffer_init(&r, data, size);
+	buffer_init(&r, ar->data + ar->talt.off + 8, ar->talt.size);
 
-	buffer_skip(&r, 8);
-	ar->nr_talt_files = buffer_read_int32(&r);
-	ar->talt_files = xcalloc(ar->nr_talt_files, sizeof(struct flat_entry));
-	for (unsigned i = 0; i < ar->nr_talt_files; i++) {
-		ar->talt_files[i].size = buffer_read_int32(&r);
-		ar->talt_files[i].off = ar->talt_off + r.index;
+	ar->nr_talt_entries = buffer_read_int32(&r);
+	ar->talt_entries = xcalloc(ar->nr_talt_entries, sizeof(struct talt_entry));
+	for (unsigned i = 0; i < ar->nr_talt_entries; i++) {
+		ar->talt_entries[i].size = buffer_read_int32(&r);
+		ar->talt_entries[i].off = ar->talt.off + r.index + 8;
 
 		if (strncmp(buffer_strdata(&r), "AJP", 4))
 			ERROR("NOT AN AJP FILE");
 
-		buffer_skip(&r, ar->talt_files[i].size);
+		buffer_skip(&r, ar->talt_entries[i].size);
 		buffer_align(&r, 4);
 
-		unsigned nr_meta = buffer_read_int32(&r);
-		for (unsigned j = 0; j < nr_meta; j++) {
-			unsigned size = buffer_read_int32(&r);
-			buffer_skip(&r, size);
+		ar->talt_entries[i].nr_meta = buffer_read_int32(&r);
+		ar->talt_entries[i].metadata = xcalloc(ar->talt_entries[i].nr_meta, sizeof(struct talt_metadata));
+		for (unsigned j = 0; j < ar->talt_entries[i].nr_meta; j++) {
+			ar->talt_entries[i].metadata[j].unknown1_size = buffer_read_int32(&r);
+			ar->talt_entries[i].metadata[j].unknown1_off = ar->talt.off + r.index + 8;
+			buffer_skip(&r, ar->talt_entries[i].metadata[j].unknown1_size);
 			buffer_align(&r, 4);
-			buffer_read_int32(&r);
-			buffer_read_int32(&r);
-			buffer_read_int32(&r);
-			buffer_read_int32(&r);
+
+			ar->talt_entries[i].metadata[j].unknown2 = buffer_read_int32(&r);
+			ar->talt_entries[i].metadata[j].unknown3 = buffer_read_int32(&r);
+			ar->talt_entries[i].metadata[j].unknown4 = buffer_read_int32(&r);
+			ar->talt_entries[i].metadata[j].unknown5 = buffer_read_int32(&r);
 		}
 	}
 
-	if (r.index != size)
+	if (r.index != ar->talt.size)
 		WARNING("Junk at end of TALT section");
 }
 
-struct archive *flat_open(uint8_t *data, size_t size, int *error)
+static bool read_section(const char *magic, struct buffer *r, struct flat_section *dst)
 {
-	struct flat_archive *ar = NULL;
-	size_t off, libl_off, talt_off;
+	if (buffer_remaining(r) < 8)
+		return false;
+	if (strncmp(buffer_strdata(r), magic, 4))
+		return false;
+	dst->present = true;
+	dst->off = r->index;
+	buffer_skip(r, 4);
+	dst->size = buffer_read_int32(r);
+	buffer_skip(r, dst->size);
+	return true;
+}
+
+struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
+{
+	struct flat_archive *ar = xcalloc(1, sizeof(struct flat_archive));
 	struct buffer r;
 	buffer_init(&r, data, size);
 
-	if (!strncmp(buffer_strdata(&r), "ELNA", 4)) {
-		buffer_seek(&r, 8);
-	}
+	read_section("ELNA", &r, &ar->elna);
+	if (!read_section("FLAT", &r, &ar->flat))
+		goto bad_archive;
+	read_section("TMNL", &r, &ar->tmnl);
+	if (!read_section("MTLC", &r, &ar->mtlc))
+		goto bad_archive;
+	if (!read_section("LIBL", &r, &ar->libl))
+		goto bad_archive;
+	read_section("TALT", &r, &ar->talt);
 
-	// FLAT section
-	if (strncmp(buffer_strdata(&r), "FLAT", 4))
-		goto exit_err;
-	buffer_skip(&r, 4);
-	off = buffer_read_int32(&r);
-	buffer_skip(&r, off);
+	if (r.index < size)
+		WARNING("Junk at end of FLAT file? %uB/%uB", (unsigned)r.index, (unsigned)size);
+	else if (r.index > size)
+		WARNING("FLAT file truncated? %uB/%uB", (unsigned)size, (unsigned)r.index);
 
-	if (!strncmp(buffer_strdata(&r), "TMNL", 4)) {
-		buffer_skip(&r, 4);
-		off = buffer_read_int32(&r);
-		buffer_skip(&r, off);
-	}
-
-	// MTLC section
-	if (strncmp(buffer_strdata(&r), "MTLC", 4))
-		goto exit_err;
-	buffer_skip(&r, 4);
-	off = buffer_read_int32(&r);
-	buffer_skip(&r, off);
-
-	// LIBL section
-	if (strncmp(buffer_strdata(&r), "LIBL", 4))
-		goto exit_err;
-	libl_off = r.index;
-	buffer_skip(&r, 4);
-	off = buffer_read_int32(&r);
-	buffer_skip(&r, off);
-
-	// TALT section
-	talt_off = r.index;
-	if (r.index < size) {
-		if (strncmp(buffer_strdata(&r), "TALT", 4))
-			goto exit_err;
-		buffer_skip(&r, 4);
-		off = buffer_read_int32(&r);
-	}
-
-	if (r.index + off < size)
-		WARNING("Junk at end of FLAT file? %uB/%uB", (unsigned)r.index+off, (unsigned)size);
-	else if (r.index + off > size)
-		WARNING("FLAT file truncated? %uB/%uB", (unsigned)size, (unsigned)r.index+off);
-
-	ar = xcalloc(1, sizeof(struct flat_archive));
-	ar->libl_off = libl_off;
-	ar->talt_off = talt_off;
-	ar->filesize = size;
 	ar->data = data;
-	read_libl(data+libl_off, talt_off - libl_off, ar);
-	read_talt(data+talt_off, size - talt_off, ar);
+	read_libl(ar);
+	read_talt(ar);
 
 	ar->ar.ops = &flat_archive_ops;
-	return &ar->ar;
-exit_err:
-	*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+	return ar;
+
+bad_archive:
 	free(ar);
+	*error = ARCHIVE_BAD_ARCHIVE_ERROR;
 	return NULL;
 }
 
-struct archive *flat_open_file(const char *path, possibly_unused int flags, int *error)
+struct flat_archive *flat_open_file(const char *path, possibly_unused int flags, int *error)
 {
 	size_t size;
 	uint8_t *data = file_read(path, &size);
-	if (!data)
+	if (!data) {
+		*error = ARCHIVE_FILE_ERROR;
 		return NULL;
+	}
 
 	struct flat_archive *ar = (struct flat_archive*)flat_open(data, size, error);
 	if (!ar) {
@@ -325,6 +295,5 @@ struct archive *flat_open_file(const char *path, possibly_unused int flags, int 
 		return NULL;
 	}
 
-	ar->allocated = true;
-	return (struct archive*)ar;
+	return ar;
 }
