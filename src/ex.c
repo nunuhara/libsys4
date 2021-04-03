@@ -516,3 +516,95 @@ void ex_free(struct ex *ex)
 	free(ex);
 }
 
+static struct ex_block *get_block(struct ex *ex, const char *name, enum ex_value_type type)
+{
+	for (unsigned i = 0; i < ex->nr_blocks; i++) {
+		if (ex->blocks[i].val.type != type)
+			continue;
+		if (!strcmp(ex->blocks[i].name->text, name))
+			return &ex->blocks[i];
+	}
+	return NULL;
+}
+
+int32_t ex_get_int(struct ex *ex, const char *name, int32_t dflt)
+{
+	struct ex_block *b = get_block(ex, name, EX_INT);
+	if (!b)
+		return dflt;
+	return b->val.i;
+}
+
+float ex_get_float(struct ex *ex, const char *name, float dflt)
+{
+	struct ex_block *b = get_block(ex, name, EX_FLOAT);
+	if (!b)
+		return dflt;
+	return b->val.f;
+}
+
+struct string *ex_get_string(struct ex *ex, const char *name)
+{
+	struct ex_block *b = get_block(ex, name, EX_STRING);
+	if (!b)
+		return NULL;
+	return b->val.s;
+}
+
+struct ex_table *ex_get_table(struct ex *ex, const char *name)
+{
+	struct ex_block *b = get_block(ex, name, EX_TABLE);
+	if (!b)
+		return NULL;
+	return b->val.t;
+}
+
+struct ex_list *ex_get_list(struct ex *ex, const char *name)
+{
+	struct ex_block *b = get_block(ex, name, EX_LIST);;
+	if (!b)
+		return NULL;
+	return b->val.list;
+}
+
+struct ex_tree *ex_get_tree(struct ex *ex, const char *name)
+{
+	struct ex_block *b = get_block(ex, name, EX_TREE);;
+	if (!b)
+		return NULL;
+	return b->val.tree;
+}
+
+struct ex_value *ex_table_get(struct ex_table *table, unsigned row, unsigned col)
+{
+	if (row >= table->nr_rows || col >= table->nr_columns)
+		return NULL;
+	return &table->rows[row][col];
+}
+
+struct ex_value *ex_list_get(struct ex_list *list, unsigned i)
+{
+	if (i >= list->nr_items)
+		return NULL;
+	return &list->items[i].value;
+}
+
+struct ex_tree *ex_tree_get_child(struct ex_tree *tree, const char *name)
+{
+	if (tree->is_leaf)
+		return NULL;
+	for (unsigned i = 0; i < tree->nr_children; i++) {
+		if (!strcmp(tree->children[i].name->text, name)) {
+			return &tree->children[i];
+		}
+	}
+	return NULL;
+}
+
+struct ex_value *ex_leaf_value(struct ex_tree *tree)
+{
+	if (!tree->is_leaf)
+		return NULL;
+	return &tree->leaf.value;
+}
+
