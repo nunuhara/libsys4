@@ -31,6 +31,8 @@ struct libl_entry {
 	uint32_t unknown_size;
 	uint32_t unknown_off;
 	enum flat_data_type type;
+	bool has_front_pad;
+	uint32_t front_pad;
 	uint32_t size;
 	uint32_t off;
 };
@@ -81,9 +83,11 @@ struct flat_archive {
 	uint32_t nr_talt_entries;
 	struct talt_entry *talt_entries;
 
+	size_t data_size;
 	uint8_t *data;
 };
 
+struct flat_archive *flat_new(void);
 struct flat_archive *flat_open(uint8_t *data, size_t size, int *error);
 struct flat_archive *flat_open_file(const char *path, int flags, int *error);
 

@@ -179,7 +179,8 @@ static void read_libl(struct flat_archive *ar)
 			if (is_image(buffer_strdata(&r)+4)) {
 				ar->libl_entries[i].off += 4;
 				ar->libl_entries[i].size -= 4;
-				buffer_skip(&r, 4);
+				ar->libl_entries[i].has_front_pad = true;
+				ar->libl_entries[i].front_pad = buffer_read_int32(&r);
 			} else {
 				WARNING("Couldn't read CG data in LIBL section");
 			}
@@ -246,9 +247,16 @@ static bool read_section(const char *magic, struct buffer *r, struct flat_sectio
 	return true;
 }
 
-struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
+struct flat_archive *flat_new(void)
 {
 	struct flat_archive *ar = xcalloc(1, sizeof(struct flat_archive));
+	ar->ar.ops = &flat_archive_ops;
+	return ar;
+}
+
+struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
+{
+	struct flat_archive *ar = flat_new();
 	struct buffer r;
 	buffer_init(&r, data, size);
 
@@ -267,11 +275,11 @@ struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
 	else if (r.index > size)
 		WARNING("FLAT file truncated? %uB/%uB", (unsigned)size, (unsigned)r.index);
 
+	ar->data_size = size;
 	ar->data = data;
 	read_libl(ar);
 	read_talt(ar);
 
-	ar->ar.ops = &flat_archive_ops;
 	return ar;
 
 bad_archive:

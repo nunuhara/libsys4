@@ -548,7 +548,7 @@ struct string *ex_get_string(struct ex *ex, const char *name)
 	struct ex_block *b = get_block(ex, name, EX_STRING);
 	if (!b)
 		return NULL;
-	return b->val.s;
+	return string_ref(b->val.s);
 }
 
 struct ex_table *ex_get_table(struct ex *ex, const char *name)

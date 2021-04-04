@@ -71,6 +71,13 @@ struct cg {
 
 extern const char *cg_file_extensions[_ALCG_NR_FORMATS];
 
+static inline const char *cg_file_extension(enum cg_type t)
+{
+	if (t < 0 || t >= _ALCG_NR_FORMATS)
+		t = ALCG_UNKNOWN;
+	return cg_file_extensions[t];
+}
+
 struct archive_data;
 
 enum cg_type cg_check_format(uint8_t *data);
