@@ -111,6 +111,7 @@ int webp_write(struct cg *cg, FILE *f)
 		WARNING("webp_write: %s", strerror(errno));
 		return 0;
 	}
+	WebPFree(out);
 	return 1;
 }
 
