@@ -33,4 +33,9 @@ const char *file_extension(const char *path);
 bool is_directory(const char *path);
 int mkdir_p(const char *path);
 
+char *path_dirname(const char *path);
+char *path_basename(const char *path);
+char *path_join(const char *dir, const char *base);
+char *path_get_icase(const char *path);
+
 #endif /* SYSTEM4_FILE_H */

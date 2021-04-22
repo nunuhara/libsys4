@@ -22,6 +22,8 @@
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
+#include <libgen.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include "system4.h"
 
@@ -116,6 +118,63 @@ bool file_copy(const char *src, const char *dst)
 bool file_exists(const char *path)
 {
 	return access(path, F_OK) != -1;
+}
+
+char *path_dirname(const char *path)
+{
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+	return dirname(buf);
+}
+
+char *path_basename(const char *path)
+{
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+	return basename(buf);
+}
+
+char *path_join(const char *dir, const char *base)
+{
+	size_t dir_len = strlen(dir);
+	size_t base_len = strlen(base);
+	if (!dir_len)
+		return xstrdup(base);
+
+	int need_sep = dir[dir_len-1] != '/' ? 1 : 0;
+	char *path = xmalloc(dir_len + need_sep + base_len + 1);
+	memcpy(path, dir, dir_len);
+	if (need_sep)
+		path[dir_len] = '/';
+	memcpy(path + dir_len + need_sep, base, base_len+1);
+	return path;
+}
+
+char *path_get_icase(const char *path)
+{
+	char *dir_name = path_dirname(path);
+	char *base_name = path_basename(path);
+	DIR *d = opendir(dir_name);
+	if (!d) {
+		// FIXME: shouldn't assume case of dir_name is correct
+		return NULL;
+	}
+
+	struct dirent *dir;
+	while ((dir = readdir(d)) != NULL) {
+		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")) {
+			continue;
+		}
+
+		if (!strcasecmp(dir->d_name, base_name)) {
+			char *path = path_join(dir_name, dir->d_name);
+			closedir(d);
+			return path;
+		}
+	}
+
+	closedir(d);
+	return NULL;
 }
 
 const char *file_extension(const char *path)
