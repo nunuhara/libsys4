@@ -21,9 +21,11 @@
 
 #include "system4.h"
 #include "system4/acx.h"
+#include "system4/file.h"
 #include "system4/string.h"
 #include "little_endian.h"
 
+// FIXME: guard against invalid .acx file (use `struct buffer` to prevent overflow)
 static struct acx *acx_read(uint8_t *data_raw)
 {
 	struct acx *acx = xcalloc(1, sizeof(struct acx));
@@ -58,26 +60,16 @@ static struct acx *acx_read(uint8_t *data_raw)
 	return acx;
 }
 
-struct acx *acx_load(const char *path)
+struct acx *acx_load(const char *path, int *error)
 {
-	FILE *fp;
-	long len;
-	uint8_t *buf = NULL;
+	size_t len;
+	uint8_t *buf = file_read(path, &len);
 
-	if (!(fp = fopen(path, "rb"))) {
-		WARNING("ACXLoader.Load: Failed to open %s", path);
+	// read file
+	if (!buf) {
+		*error = ACX_ERROR_FILE;
 		return NULL;
 	}
-
-	// get size of ACX file
-	fseek(fp, 0, SEEK_END);
-	len = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	// read ACX file into memory
-	buf = xmalloc(len + 4);
-	fread(buf, 1, len, fp);
-	fclose(fp);
 
 	// check magic
 	if (strncmp((char*)buf, "ACX\0\0\0\0", 8)) {
@@ -85,6 +77,7 @@ struct acx *acx_load(const char *path)
 		return false;
 	}
 
+	// decompress
 	int compressed_size = LittleEndian_getDW(buf, 8);
 	unsigned long size = LittleEndian_getDW(buf, 12);
 	uint8_t *data_raw = xmalloc(size);
@@ -93,12 +86,19 @@ struct acx *acx_load(const char *path)
 		WARNING("ACXLoader.Load: uncompress failed");
 		free(buf);
 		free(data_raw);
+		*error = ACX_ERROR_INVALID;
 		return NULL;
 	}
 
+	// read data
 	struct acx *acx = acx_read(data_raw);
 	free(buf);
 	free(data_raw);
+	if (acx) {
+		*error = ACX_SUCCESS;
+	} else {
+		*error = ACX_ERROR_INVALID;
+	}
 	return acx;
 }
 

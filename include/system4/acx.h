@@ -27,6 +27,12 @@ enum acx_column_type {
 	ACX_STRING = 2
 };
 
+enum {
+	ACX_SUCCESS = 0,
+	ACX_ERROR_FILE = 1,
+	ACX_ERROR_INVALID = 2
+};
+
 union acx_value {
 	int32_t i;
 	struct string *s;
@@ -39,7 +45,7 @@ struct acx {
 	union acx_value *lines;
 };
 
-struct acx *acx_load(const char *path);
+struct acx *acx_load(const char *path, int *error);
 void acx_free(struct acx *acx);
 int acx_get_int(struct acx *acx, int line, int col);
 struct string *acx_get_string(struct acx *acx, int line, int col);
