@@ -754,6 +754,13 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 	struct ain_function *funs = calloc(count, sizeof(struct ain_function));
 	for (int i = 0; i < count; i++) {
 		funs[i].address = read_int32(r);
+		// XXX: Fix for broken CN dohnadohna.ain
+		//      Typically 0xFF is not valid as a first byte, so this is probably OK
+		if (r->buf[r->index] == 0xFF) {
+			WARNING("Junk at start of function name: '%s'", r->buf + r->index);
+			while (r->buf[r->index] == 0xFF)
+				r->index++;
+		}
 		funs[i].name = read_string(r);
 		if (!strcmp(funs[i].name, "0"))
 			ain->alloc = i;
