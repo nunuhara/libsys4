@@ -1260,8 +1260,9 @@ struct ain *ain_open(const char *path, int *error)
 		.size = len,
 		.ain = ain
 	};
+	ain->version = -1;
 	while (read_tag(&r, ain));
-	if (!ain->version) {
+	if (ain->version == -1) {
 		*error = AIN_INVALID;
 		goto err;
 	}
