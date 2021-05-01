@@ -38,6 +38,7 @@ enum cg_type {
 	ALCG_PMS16   = 6,
 	ALCG_WEBP    = 7,
 	ALCG_DCF     = 8,
+	ALCG_JPEG    = 9,
 	_ALCG_NR_FORMATS
 };
 
