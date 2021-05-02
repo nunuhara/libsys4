@@ -262,8 +262,8 @@ static void pms_init_metrics(struct pms_header *pms, struct cg_metrics *dst)
 	dst->w = pms->width;
 	dst->h = pms->height;
 	dst->bpp = pms->bpp;
-	dst->has_pixel = pms->dp;
-	dst->has_alpha = pms->pp;
+	dst->has_pixel = pms->bpp != 8;
+	dst->has_alpha = pms->bpp == 8 || pms->pp;
 	dst->pixel_pitch = pms->width * (pms->bpp / 8);
 	dst->alpha_pitch = 1;
 }
@@ -276,27 +276,22 @@ bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst)
 	return true;
 }
 
-static uint32_t indexed_to_RGBA(struct cg_palette *pal, uint8_t i)
-{
-	return pal->red[i] | pal->green[i] << 8 | pal->blue[i] << 16 | 0xff000000;
-}
-
-/* Load a PMS8 CG. */
+/* Load a PMS8 CG as an alpha-map. */
 static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
 {
 	cg->pal = pms_get_palette(data + pms->pp);
 
 	cg->type = ALCG_PMS8;
-	uint8_t *pixels = pms8_extract(pms, data + pms->dp);
+	uint8_t *alpha = pms8_extract(pms, data + pms->dp);
 
 	// Convert to RGBA
 	cg->pixels = xmalloc(pms->width * pms->height * 4);
 	uint32_t *dst = cg->pixels;
 	for (int i = 0; i < pms->width * pms->height; i++) {
-		dst[i] = indexed_to_RGBA(cg->pal, pixels[i]);
+		dst[i] = alpha[i] << 24;
 	}
 
-	free(pixels);
+	free(alpha);
 }
 
 static uint32_t RGB565to8888(uint16_t pc, uint8_t a)
