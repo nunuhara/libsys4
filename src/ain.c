@@ -69,20 +69,21 @@ static void init_func_ht(struct ain *ain)
 	}
 }
 
-static void struct_ht_add(struct ain *ain, struct ain_struct *s)
+static void struct_ht_add(struct ain *ain, intptr_t i)
 {
+	struct ain_struct *s = &ain->structures[i];
 	struct ht_slot *kv = ht_put(ain->_struct_ht, s->name, NULL);
 	if (kv->value) {
 		ERROR("Duplicate structure names: '%s'", s->name);
 	}
-	kv->value = s;
+	kv->value = (void*)i;
 }
 
 static void init_struct_ht(struct ain *ain)
 {
 	ain->_struct_ht = ht_create(1024);
 	for (int i = 0; i < ain->nr_structures; i++) {
-		struct_ht_add(ain, &ain->structures[i]);
+		struct_ht_add(ain, i);
 	}
 }
 
@@ -218,8 +219,7 @@ err:
 
 int ain_get_struct(struct ain *ain, char *name)
 {
-	struct ain_struct *s = ht_get(ain->_struct_ht, name, NULL);
-	return s ? s - ain->structures : -1;
+	return (intptr_t)ht_get(ain->_struct_ht, name, (void*)-1);
 }
 
 int ain_add_struct(struct ain *ain, const char *name)
@@ -229,7 +229,7 @@ int ain_add_struct(struct ain *ain, const char *name)
 	ain->structures[no].name = strdup(name);
 	ain->structures[no].constructor = -1;
 	ain->structures[no].destructor = -1;
-	struct_ht_add(ain, &ain->structures[no]);
+	struct_ht_add(ain, no);
 	ain->nr_structures++;
 	return no;
 }
