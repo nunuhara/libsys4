@@ -484,48 +484,48 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 	case AIN_STRING:              return strdup("string");
 	case AIN_STRUCT:
 		if (v->struc == -1 || !ain)
-			return strdup("struct");
+			return strdup("hll_struct");
 		return strdup(ain->structures[v->struc].name);
-	case AIN_ARRAY_INT:           return array_type_string("array@int", v->rank);
-	case AIN_ARRAY_FLOAT:         return array_type_string("array@float", v->rank);
-	case AIN_ARRAY_STRING:        return array_type_string("array@string", v->rank);
+	case AIN_ARRAY_INT:           return array_type_string("array<int>", v->rank);
+	case AIN_ARRAY_FLOAT:         return array_type_string("array<float>", v->rank);
+	case AIN_ARRAY_STRING:        return array_type_string("array<string>", v->rank);
 	case AIN_ARRAY_STRUCT:
 		if (v->struc == -1 || !ain)
-			return array_type_string("array@struct", v->rank);
-		snprintf(buf, 1024, "array@%s", ain->structures[v->struc].name);
+			return array_type_string("array<struct>", v->rank);
+		snprintf(buf, 1024, "array<%s>", ain->structures[v->struc].name);
 		return array_type_string(buf, v->rank);
 	case AIN_REF_INT:             return strdup("ref int");
 	case AIN_REF_FLOAT:           return strdup("ref float");
 	case AIN_REF_STRING:          return strdup("ref string");
 	case AIN_REF_STRUCT:
 		if (v->struc == -1 || !ain)
-			return strdup("ref struct");
+			return strdup("ref hll_struct");
 		return type_sprintf("ref %s", ain->structures[v->struc].name);
-	case AIN_REF_ARRAY_INT:       return array_type_string("ref array@int", v->rank);
-	case AIN_REF_ARRAY_FLOAT:     return array_type_string("ref array@float", v->rank);
-	case AIN_REF_ARRAY_STRING:    return array_type_string("ref array@string", v->rank);
+	case AIN_REF_ARRAY_INT:       return array_type_string("ref array<int>", v->rank);
+	case AIN_REF_ARRAY_FLOAT:     return array_type_string("ref array<float>", v->rank);
+	case AIN_REF_ARRAY_STRING:    return array_type_string("ref array<string>", v->rank);
 	case AIN_REF_ARRAY_STRUCT:
 		if (v->struc == -1 || !ain)
-			return strdup("ref array@struct");
-		snprintf(buf, 1024, "ref array@%s", ain->structures[v->struc].name);
+			return strdup("ref array<hll_struct>");
+		snprintf(buf, 1024, "ref array<%s>", ain->structures[v->struc].name);
 		return array_type_string(buf, v->rank);
 	case AIN_IMAIN_SYSTEM:        return strdup("imain_system");
 	case AIN_FUNC_TYPE:           return strdup("functype");
-	case AIN_ARRAY_FUNC_TYPE:     return array_type_string("array@functype", v->rank);
+	case AIN_ARRAY_FUNC_TYPE:     return array_type_string("array<functype>", v->rank);
 	case AIN_REF_FUNC_TYPE:       return strdup("ref functype");
-	case AIN_REF_ARRAY_FUNC_TYPE: return array_type_string("ref array@functype", v->rank);
+	case AIN_REF_ARRAY_FUNC_TYPE: return array_type_string("ref array<functype>", v->rank);
 	case AIN_BOOL:                return strdup("bool");
-	case AIN_ARRAY_BOOL:          return array_type_string("array@bool", v->rank);
+	case AIN_ARRAY_BOOL:          return array_type_string("array<bool>", v->rank);
 	case AIN_REF_BOOL:            return strdup("ref bool");
-	case AIN_REF_ARRAY_BOOL:      return array_type_string("ref array@bool", v->rank);
+	case AIN_REF_ARRAY_BOOL:      return array_type_string("ref array<bool>", v->rank);
 	case AIN_LONG_INT:            return strdup("lint");
-	case AIN_ARRAY_LONG_INT:      return array_type_string("array@lint", v->rank);
+	case AIN_ARRAY_LONG_INT:      return array_type_string("array<lint>", v->rank);
 	case AIN_REF_LONG_INT:        return strdup("ref lint");
-	case AIN_REF_ARRAY_LONG_INT:  return array_type_string("ref array@lint", v->rank);
+	case AIN_REF_ARRAY_LONG_INT:  return array_type_string("ref array<lint>", v->rank);
 	case AIN_DELEGATE:            return strdup("delegate");
-	case AIN_ARRAY_DELEGATE:      return array_type_string("array@delegate", v->rank);
+	case AIN_ARRAY_DELEGATE:      return array_type_string("array<delegate>", v->rank);
 	case AIN_REF_DELEGATE:        return strdup("ref delegate");
-	case AIN_REF_ARRAY_DELEGATE:  return array_type_string("ref array@delegate", v->rank);
+	case AIN_REF_ARRAY_DELEGATE:  return array_type_string("ref array<delegate>", v->rank);
 	case AIN_HLL_PARAM:           return strdup("hll_param");
 	case AIN_REF_HLL_PARAM:       return strdup("ref hll_param");
 	case AIN_ARRAY:
