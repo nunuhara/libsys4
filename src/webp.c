@@ -69,6 +69,9 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 	webp_init_metrics(&cg->metrics);
 	cg->type = ALCG_WEBP;
 
+	if (!ar)
+		return;
+
 	int base = get_base_cg(data, size);
 	if (base < 0)
 		return;
