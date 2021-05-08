@@ -120,7 +120,7 @@ void cg_free(struct cg *cg)
 	free(cg);
 }
 
-static struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size, struct archive *ar)
+static struct cg *cg_load_internal(uint8_t *buf, size_t buf_size, struct archive *ar)
 {
 	struct cg *cg = xcalloc(1, sizeof(struct cg));
 
@@ -160,7 +160,7 @@ static struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size, struct archive *
 
 struct cg *cg_load_data(struct archive_data *dfile)
 {
-	return cg_load_buffer(dfile->data, dfile->size, dfile->archive);
+	return cg_load_internal(dfile->data, dfile->size, dfile->archive);
 }
 
 /*
@@ -187,9 +187,14 @@ struct cg *cg_load_file(const char *filename)
 {
 	size_t buf_size;
 	uint8_t *buf = file_read(filename, &buf_size);
-	struct cg *cg = cg_load_buffer(buf, buf_size, NULL);
+	struct cg *cg = cg_load_internal(buf, buf_size, NULL);
 	free(buf);
 	return cg;
+}
+
+struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size)
+{
+	return cg_load_internal(buf, buf_size, NULL);
 }
 
 int cg_write(struct cg *cg, enum cg_type type, FILE *f)

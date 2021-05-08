@@ -86,6 +86,7 @@ bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst);
 struct cg *cg_load_data(struct archive_data *dfile);
 struct cg *cg_load(struct archive *ar, int no);
 struct cg *cg_load_file(const char *filename);
+struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size);
 int cg_write(struct cg *cg, enum cg_type type, FILE *f);
 void cg_free(struct cg *cg);
 
