@@ -31,16 +31,6 @@
 		.argtypes = { __VA_ARGS__ }	\
 	}
 
-#define TODO(syscode, sysname, rt, nargs, ...)	\
-	[syscode] = {				\
-		.code = syscode,		\
-		.name = "system." #sysname ,	\
-		.implemented = false,		\
-		.return_type = rt,		\
-		.nr_args = nargs,		\
-		.argtypes = { __VA_ARGS__ }	\
-	}
-
 const struct syscall syscalls[NR_SYSCALLS] = {
 	SYS  ( SYS_EXIT,                 Exit,               AIN_VOID_TYPE,   1, AIN_INT ),
 	SYS  ( SYS_GLOBAL_SAVE,          GlobalSave,         AIN_INT_TYPE,    2, AIN_STRING, AIN_STRING ),
@@ -56,7 +46,7 @@ const struct syscall syscalls[NR_SYSCALLS] = {
 	SYS  ( SYS_OPEN_WEB,             OpenWeb,            AIN_VOID_TYPE,   1, AIN_STRING ),
 	SYS  ( SYS_GET_SAVE_FOLDER_NAME, GetSaveFolderName,  AIN_STRING_TYPE, 0 ),
 	SYS  ( SYS_GET_TIME,             GetTime,            AIN_INT_TYPE,    0 ),
-	TODO ( SYS_GET_GAME_NAME,        GetGameName,        AIN_STRING_TYPE, 0 ),
+	SYS  ( SYS_GET_GAME_NAME,        GetGameName,        AIN_STRING_TYPE, 0 ),
 	SYS  ( SYS_ERROR,                Error,              AIN_STRING_TYPE, 1, AIN_STRING ),
 	SYS  ( SYS_EXISTS_SAVE_FILE,     ExistsSaveFile,     AIN_INT_TYPE,    1, AIN_STRING ),
 	SYS  ( SYS_IS_DEBUG_MODE,        IsDebugMode,        AIN_INT_TYPE,    0 ),
@@ -66,11 +56,11 @@ const struct syscall syscalls[NR_SYSCALLS] = {
 	SYS  ( SYS_SLEEP,                Sleep,              AIN_VOID_TYPE,   1, AIN_INT ),
 	SYS  ( SYS_GROUP_SAVE,           GroupSave,          AIN_INT_TYPE,    4, AIN_STRING, AIN_STRING, AIN_STRING, AIN_REF_INT ),
 	SYS  ( SYS_GROUP_LOAD,           GroupLoad,          AIN_INT_TYPE,    4, AIN_STRING, AIN_STRING, AIN_STRING, AIN_REF_INT ),
-	TODO ( SYS_RESUME_WRITE_COMMENT, ResumeWriteComment, AIN_BOOL_TYPE,   3, AIN_STRING, AIN_STRING, AIN_REF_ARRAY_STRING ),
-	TODO ( SYS_RESUME_READ_COMMENT,  ResumeReadComment,  AIN_BOOL_TYPE,   3, AIN_STRING, AIN_STRING, AIN_REF_ARRAY_STRING ),
-	TODO ( SYS_DELETE_SAVE_FILE,     DeleteSaveFile,     AIN_INT_TYPE,    1, AIN_STRING ),
-	TODO ( SYS_EXIST_FUNC,           ExistFunc,          AIN_BOOL_TYPE,   1, AIN_STRING ),
-	TODO ( SYS_COPY_SAVE_FILE,       CopySaveFile,       AIN_INT_TYPE,    2, AIN_STRING, AIN_STRING ),
+	SYS  ( SYS_RESUME_WRITE_COMMENT, ResumeWriteComment, AIN_BOOL_TYPE,   3, AIN_STRING, AIN_STRING, AIN_REF_ARRAY_STRING ),
+	SYS  ( SYS_RESUME_READ_COMMENT,  ResumeReadComment,  AIN_BOOL_TYPE,   3, AIN_STRING, AIN_STRING, AIN_REF_ARRAY_STRING ),
+	SYS  ( SYS_DELETE_SAVE_FILE,     DeleteSaveFile,     AIN_INT_TYPE,    1, AIN_STRING ),
+	SYS  ( SYS_EXIST_FUNC,           ExistFunc,          AIN_BOOL_TYPE,   1, AIN_STRING ),
+	SYS  ( SYS_COPY_SAVE_FILE,       CopySaveFile,       AIN_INT_TYPE,    2, AIN_STRING, AIN_STRING ),
 };
 
 // JMP = instruction that modifies the instruction pointer
@@ -104,7 +94,6 @@ const struct syscall syscalls[NR_SYSCALLS] = {
 		.args = { __VA_ARGS__ }		\
 	}
 
-#undef TODO
 #define TODO(code, nargs, ...)			\
 	[code] = {				\
 		.opcode = code,			\
