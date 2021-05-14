@@ -64,10 +64,24 @@ static void push_value(value_list *values, struct ini_value value)
     kv_push(struct ini_value, *values, value);
 }
 
-static struct ini_entry *make_list_assign(struct string *name, int i, struct ini_value value)
+static struct ini_value make_entry_value(value_list *values)
+{
+    struct ini_value *vals = kv_data(*values);
+    size_t nr_vals = kv_size(*values);
+    free(values);
+
+    if (nr_vals == 1) {
+	struct ini_value val = vals[0];
+	free(vals);
+	return val;
+    }
+    return ini_make_list(vals, nr_vals);
+}
+
+static struct ini_entry *make_list_assign(struct string *name, int i, value_list *values)
 {
     struct ini_value *val = xmalloc(sizeof(struct ini_value));
-    *val = value;
+    *val = make_entry_value(values);
 
     struct ini_value wrapper = {
 	.type = _INI_LIST_ENTRY,
@@ -75,6 +89,11 @@ static struct ini_entry *make_list_assign(struct string *name, int i, struct ini
 	._list_value = val
     };
     return ini_make_entry(name, wrapper);
+}
+
+static struct ini_entry *make_entry(struct string *name, value_list *values)
+{
+    return ini_make_entry(name, make_entry_value(values));
 }
 
 static struct ini_entry *make_formation(struct string *name, entry_list *entries)
@@ -116,9 +135,9 @@ entries	:	entry         { $$ = make_ini(); push_entry($$, $1); }
 	|	entries entry { push_entry($1, $2); }
 	;
 
-entry	:	IDENTIFIER                 '=' value { $$ = ini_make_entry($1, $3); }
-	|	IDENTIFIER '[' INTEGER ']' '=' value { $$ = make_list_assign($1, $3, $6); }
-	|	FORMATION STRING '{' entries '}'     { $$ = make_formation($2, $4); }
+entry	:	IDENTIFIER                 '=' list { $$ = make_entry($1, $3); }
+	|	IDENTIFIER '[' INTEGER ']' '=' list { $$ = make_list_assign($1, $3, $6); }
+	|	FORMATION STRING '{' entries '}'    { $$ = make_formation($2, $4); }
 	;
 
 value	:	INTEGER          { $$ = ini_make_integer($1); }
