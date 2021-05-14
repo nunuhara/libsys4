@@ -341,7 +341,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( SH_STRUCT_SR_REF, 2, T_MEMB, T_STRUCT ),
         OP   ( SH_STRUCT_S_REF, 1, T_MEMB ),
         OP   ( S_REF2, 1, T_MEMB ),
-        TODO ( SH_REF_LOCAL_ASSIGN_STRUCTREF2, 3, T_INT, T_INT, T_INT ), // FIXME: arguments types unknown
+        OP   ( SH_REF_LOCAL_ASSIGN_STRUCTREF2, 3, T_MEMB, T_LOCAL, T_MEMB2 ),
         OP   ( SH_GLOBAL_S_REF, 1, T_GLOBAL ),
         OP   ( SH_LOCAL_S_REF, 1, T_LOCAL ),
         OP   ( SH_LOCALREF_SASSIGN_LOCALSREF, 2, T_LOCAL, T_LOCAL ),
