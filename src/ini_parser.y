@@ -3,6 +3,7 @@
 %union {
     int token;
     int i;
+    float f;
     struct string *s;
     struct ini_entry *entry;
     struct ini_value value;
@@ -116,6 +117,7 @@ static struct ini_entry *make_formation(struct string *name, entry_list *entries
 
 %token	<token>		TRUE FALSE FORMATION
 %token	<i>		INTEGER
+%token	<f>		FLOAT
 %token	<s>		STRING IDENTIFIER
 
 %type	<entries>	inifile
@@ -141,6 +143,7 @@ entry	:	IDENTIFIER                 '=' list { $$ = make_entry($1, $3); }
 	;
 
 value	:	INTEGER          { $$ = ini_make_integer($1); }
+	|	FLOAT            { $$ = ini_make_float($1); }
 	|	TRUE             { $$ = ini_make_boolean(true); }
 	|	FALSE            { $$ = ini_make_boolean(false); }
 	|	STRING           { $$ = ini_make_string($1); }

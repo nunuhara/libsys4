@@ -51,6 +51,7 @@ unsigned long yini_line = 1;
 true                      return TRUE;
 false                     return FALSE;
 Formation                 return FORMATION;
+[0-9]+\.[0-9]+            yini_lval.f = strtof(yini_text, NULL); return FLOAT;
 [0-9]+                    yini_lval.i = atoi(yini_text); return INTEGER;
 [a-zA-Z]+[a-zA-Z0-9_-]*   yini_lval.s = make_string(yini_text, yini_leng); return IDENTIFIER;
 

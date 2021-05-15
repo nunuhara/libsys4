@@ -24,6 +24,7 @@ struct string;
 enum ini_value_type {
 	INI_NULL,
 	INI_INTEGER,
+	INI_FLOAT,
 	INI_BOOLEAN,
 	INI_STRING,
 	INI_LIST,
@@ -37,6 +38,7 @@ struct ini_value {
 	enum ini_value_type type;
 	union {
 		int i;
+		int f;
 		struct string *s;
 		// list
 		struct {
@@ -73,6 +75,11 @@ void ini_free_entry(struct ini_entry *entry);
 static inline struct ini_value ini_make_integer(int n)
 {
 	return (struct ini_value) { .type = INI_INTEGER, .i = n };
+}
+
+static inline struct ini_value ini_make_float(float f)
+{
+	return (struct ini_value) { .type = INI_FLOAT, .f = f };
 }
 
 static inline struct ini_value ini_make_boolean(int b)
