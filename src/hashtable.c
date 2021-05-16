@@ -114,3 +114,51 @@ void ht_free(struct hash_table *ht)
 	}
 	free(ht);
 }
+
+static unsigned int int_hash(unsigned int x)
+{
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return x;
+}
+
+void *ht_get_int(struct hash_table *ht, int key, void *dflt)
+{
+	unsigned int k = int_hash(key) & (ht->nr_buckets - 1);
+	if (!ht->buckets[k])
+		return dflt;
+	for (size_t i = 0; i < ht->buckets[k]->nr_slots; i++) {
+		if (ht->buckets[k]->slots[i].ikey == key)
+			return ht->buckets[k]->slots[i].value;
+	}
+	return dflt;
+}
+
+struct ht_slot *ht_put_int(struct hash_table *ht, int key, void *dflt)
+{
+	unsigned int k = int_hash(key) & (ht->nr_buckets - 1);
+
+	// init new bucket
+	if (!ht->buckets[k]) {
+		ht->buckets[k] = xmalloc(sizeof(struct ht_bucket) + sizeof(struct ht_slot));
+		ht->buckets[k]->nr_slots = 1;
+		ht->buckets[k]->slots[0].ikey = key;
+		ht->buckets[k]->slots[0].value = dflt;
+		return &ht->buckets[k]->slots[0];
+	}
+
+	// search for key in bucket
+	for (size_t i = 0; i < ht->buckets[k]->nr_slots; i++) {
+		if (ht->buckets[k]->slots[i].ikey == key)
+			return &ht->buckets[k]->slots[i];
+	}
+
+	// alloc new slot
+	size_t i = ht->buckets[k]->nr_slots;
+	ht->buckets[k] = xrealloc(ht->buckets[k], sizeof(struct ht_bucket) + sizeof(struct ht_slot)*(i+1));
+	ht->buckets[k]->nr_slots = i+1;
+	ht->buckets[k]->slots[i].ikey = key;
+	ht->buckets[k]->slots[i].value = dflt;
+	return &ht->buckets[k]->slots[i];
+}

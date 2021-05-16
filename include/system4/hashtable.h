@@ -20,7 +20,10 @@
 #include <stddef.h>
 
 struct ht_slot {
-	char *key;
+	union {
+		char *key;
+		int ikey;
+	};
 	void *value;
 };
 
@@ -32,5 +35,12 @@ void ht_free(struct hash_table *ht);
 void *ht_get(struct hash_table *ht, const char *key, void *dflt);
 struct ht_slot *ht_put(struct hash_table *ht, const char *key, void *dflt);
 void ht_foreach_value(struct hash_table *ht, void(*fun)(void*));
+
+/*
+ * Integer-keyed hash tables. These functions should not be used together
+ * with the regular ht_get/ht_put functions on the same hash table.
+ */
+void *ht_get_int(struct hash_table *ht, int key, void *dflt);
+struct ht_slot *ht_put_int(struct hash_table *ht, int key, void *dflt);
 
 #endif /* SYSTEM4_HASHTABLE_H */
