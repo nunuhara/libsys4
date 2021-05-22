@@ -259,7 +259,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( S_PLUSA2,       0 ),
         OP   ( OBJSWAP,        0, T_INT ), // XXX: changed in ain version > 8
         TODO ( S_ERASE,        0 ),
-        TODO ( SR_REF2,        1, T_INT ),
+        OP   ( SR_REF2,        1, T_STRUCT ),
         OP   ( S_ERASE2,       0 ),
         OP   ( S_PUSHBACK2,    0 ),
         OP   ( S_POPBACK2,     0 ),
