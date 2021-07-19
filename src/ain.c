@@ -273,11 +273,43 @@ int ain_add_initval(struct ain *ain, int global_index)
 	return no;
 }
 
+// FIXME: This doesn't work correctly on ascii-incompatible encodings where
+//        the '@' character can occur in a multi-byte sequence.
+static void function_init_struct_type(struct ain *ain, struct ain_function *f)
+{
+	f->struct_type = -1;
+	f->enum_type = -1;
+
+	char *at = strchr(f->name, '@');
+	if (!at)
+		return;
+
+	size_t len = at - f->name;
+	char *struct_name = xmalloc(len + 1);
+	memcpy(struct_name, f->name, len);
+	struct_name[len] = '\0';
+
+	int struct_no = ain_get_struct(ain, struct_name);
+	if (struct_no >= 0) {
+		f->struct_type = struct_no;
+	} else {
+		for (int i = 0; i < ain->nr_enums; i++) {
+			if (!strcmp(struct_name, ain->enums[i].name)) {
+				f->enum_type = i;
+				break;
+			}
+		}
+	}
+
+	free(struct_name);
+}
+
 int ain_add_function(struct ain *ain, const char *name)
 {
 	int no = ain->nr_functions;
 	ain->functions = xrealloc_array(ain->functions, no, no+1, sizeof(struct ain_function));
 	ain->functions[no].name = strdup(name);
+	function_init_struct_type(ain, &ain->functions[no]);
 	func_ht_add(ain, no);
 	ain->nr_functions++;
 	return no;
@@ -303,6 +335,8 @@ int ain_dup_function(struct ain *ain, int src_no)
 	*dst = *src;
 	dst->name = strdup(src->name);
 	copy_type(&dst->return_type, &src->return_type);
+	dst->struct_type = src->struct_type;
+	dst->enum_type = src->enum_type;
 	dst->vars = xcalloc(src->nr_vars, sizeof(struct ain_variable));
 	for (int i = 0; i < src->nr_vars; i++) {
 		dst->vars[i] = src->vars[i];
