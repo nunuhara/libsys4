@@ -25,6 +25,11 @@
 #include "system4/utfsjis.h"
 #include "little_endian.h"
 
+/*
+ * NOTE: FNL glyphs are indexed according to the sequential order of code points
+ *       encoded by Shift-JIS, beginning with the ASCII space character (0x20).
+ */
+
 static unsigned int sjis_code_to_index(uint16_t code)
 {
 	// one byte
@@ -41,12 +46,52 @@ static unsigned int sjis_code_to_index(uint16_t code)
 	uint8_t fst = code >> 8;
 	uint8_t snd = code & 0xFF;
 
-	if (fst < 0x81)
-		return 0;
 	if (snd < 0x40 || snd == 0x7f || snd > 0xfc)
 		return 0;
 
-	return code - (0x80a2 + (68 * (fst - 0x81)) + (snd > 0x7f ? 1 : 0));
+	// index of first byte (within allowable range)
+	unsigned fst_index = 0;
+	// index of second byte (within allowable range)
+	unsigned snd_index = snd - (0x40 + (snd > 0x7f ? 1 : 0));
+
+	if (fst < 0x81)
+		return 0;
+	else if (fst < 0xa0)
+		fst_index = fst - 0x81;
+	else if (fst < 0xe0)
+		return 0;
+	else if (fst < 0xfd)
+		fst_index = (fst - 0xe0) + 31;
+	else
+		return 0;
+
+	return 158 + fst_index*188 + snd_index;
+}
+
+static possibly_unused uint16_t index_to_sjis_code(unsigned index)
+{
+	if (index < 95)
+		return index + 0x20;
+	if (index < 158)
+		return (index - 95) + 0xA1;
+
+	index -= 158;
+
+	// NOTE: 188  = number of code points encoded per first-byte in SJIS
+	//       0x81 = first valid SJIS first-byte
+	//       0xa0 = beginning of invalid first-bytes
+	//       31   = number of invalid first-bytes beginning at 0xa0
+	uint16_t fst = 0x81 + index / 188;
+	if (fst >= 0xa0)
+		fst += 31;
+
+	// NOTE: 0x40 = first valid SJIS second-byte
+	//       0x7f = invalid as a second-byte
+	uint16_t snd = 0x40 + index % 188;
+	if (snd >= 0x7f)
+		snd += 1;
+
+	return (fst << 8) | snd;
 }
 
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code)
