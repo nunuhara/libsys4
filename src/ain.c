@@ -357,6 +357,7 @@ int ain_add_functype(struct ain *ain, const char *name)
 	ain->function_types = xrealloc_array(ain->function_types, no, no+1, sizeof(struct ain_function_type));
 	ain->function_types[no].name = strdup(name);
 	ain->nr_function_types++;
+	ain->FNCT.present = true;
 	return no;
 }
 
@@ -364,6 +365,25 @@ int ain_get_functype(struct ain *ain, const char *name)
 {
 	for (int i = 0; i < ain->nr_function_types; i++) {
 		if (!strcmp(ain->function_types[i].name, name))
+			return i;
+	}
+	return -1;
+}
+
+int ain_add_delegate(struct ain *ain, const char *name)
+{
+	int no = ain->nr_delegates;
+	ain->delegates = xrealloc_array(ain->delegates, no, no+1, sizeof(struct ain_function_type));
+	ain->delegates[no].name = strdup(name);
+	ain->nr_delegates++;
+	ain->DELG.present = true;
+	return no;
+}
+
+int ain_get_delegate(struct ain *ain, const char *name)
+{
+	for (int i = 0; i < ain->nr_delegates; i++) {
+		if (!strcmp(ain->delegates[i].name, name))
 			return i;
 	}
 	return -1;

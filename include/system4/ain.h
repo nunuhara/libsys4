@@ -363,6 +363,7 @@ int ain_get_enum(struct ain *ain, char *name);
 int ain_get_library(struct ain *ain, const char *name);
 int ain_get_library_function(struct ain *ain, int libno, const char *name);
 int ain_get_functype(struct ain *ain, const char *name);
+int ain_get_delegate(struct ain *ain, const char *name);
 int ain_get_string_no(struct ain *ain, const char *str);
 
 int ain_add_function(struct ain *ain, const char *name);
@@ -372,6 +373,7 @@ int ain_add_initval(struct ain *ain, int global_index);
 int ain_add_struct(struct ain *ain, const char *name);
 int ain_add_library(struct ain *ain, const char *name);
 int ain_add_functype(struct ain *ain, const char *name);
+int ain_add_delegate(struct ain *ain, const char *name);
 int ain_add_string(struct ain *ain, const char *str);
 int ain_add_message(struct ain *ain, const char *str);
 int ain_add_file(struct ain *ain, const char *filename);
