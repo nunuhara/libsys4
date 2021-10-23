@@ -296,8 +296,11 @@ static void ex_read_tree(struct buffer *r, struct ex_tree *tree)
 
 	if (!tree->is_leaf) {
 		tree->nr_children = buffer_read_int32(r);
+		tree->_children = xcalloc(tree->nr_children, sizeof(struct ex_value));
 		tree->children = xcalloc(tree->nr_children, sizeof(struct ex_tree));
 		for (uint32_t i = 0; i < tree->nr_children; i++) {
+			tree->_children[i].type = EX_TREE;
+			tree->_children[i].tree = &tree->children[i];
 			ex_read_tree(r, &tree->children[i]);
 		}
 	} else {
@@ -486,6 +489,7 @@ static void ex_free_tree(struct ex_tree *tree)
 	for (uint32_t i = 0; i < tree->nr_children; i++) {
 		ex_free_tree(&tree->children[i]);
 	}
+	free(tree->_children);
 	free(tree->children);
 }
 
@@ -516,63 +520,113 @@ void ex_free(struct ex *ex)
 	free(ex);
 }
 
-static struct ex_block *get_block(struct ex *ex, const char *name, enum ex_value_type type)
+static struct ex_value *ex_tree_get_path(struct ex_tree *tree, const char *path)
+{
+	char *next = strchr(path, '.');
+	size_t len = next ? (size_t)(next - path) : strlen(path);
+
+	if (tree->is_leaf) {
+		if (!next && !strcmp(tree->leaf.name->text, path))
+			return &tree->leaf.value;
+		return NULL;
+	}
+
+	for (unsigned i = 0; i < tree->nr_children; i++) {
+		if (!strncmp(tree->children[i].name->text, path, len)) {
+			if (next) {
+				return ex_tree_get_path(&tree->children[i], next+1);
+			}
+			if (tree->children[i].is_leaf)
+				return &tree->children[i].leaf.value;
+			return &tree->_children[i];
+		}
+	}
+
+	return NULL;
+}
+
+static struct ex_value *_ex_get(struct ex *ex, const char *name, size_t name_len)
+{
+	// TODO: use hash table
+	for (unsigned i = 0; i < ex->nr_blocks; i++) {
+		if (!strncmp(ex->blocks[i].name->text, name, name_len))
+			return &ex->blocks[i].val;
+	}
+	return NULL;
+}
+
+struct ex_value *ex_get(struct ex *ex, const char *name)
+{
+	char *next = strchr(name, '.');
+	size_t len = next ? (size_t)(next - name) : strlen(name);
+	struct ex_value *v = _ex_get(ex, name, len);
+	if (!v)
+		return NULL;
+	if (!next)
+		return v;
+	if (v->type != EX_TREE)
+		return NULL;
+	NOTICE("TREE PATH: %s", next+1);
+	return ex_tree_get_path(v->tree, next+1);
+}
+
+static struct ex_value *get_block(struct ex *ex, const char *name, enum ex_value_type type)
 {
 	for (unsigned i = 0; i < ex->nr_blocks; i++) {
 		if (ex->blocks[i].val.type != type)
 			continue;
 		if (!strcmp(ex->blocks[i].name->text, name))
-			return &ex->blocks[i];
+			return &ex->blocks[i].val;
 	}
 	return NULL;
 }
 
 int32_t ex_get_int(struct ex *ex, const char *name, int32_t dflt)
 {
-	struct ex_block *b = get_block(ex, name, EX_INT);
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_INT);
+	if (!v)
 		return dflt;
-	return b->val.i;
+	return v->i;
 }
 
 float ex_get_float(struct ex *ex, const char *name, float dflt)
 {
-	struct ex_block *b = get_block(ex, name, EX_FLOAT);
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_FLOAT);
+	if (!v)
 		return dflt;
-	return b->val.f;
+	return v->f;
 }
 
 struct string *ex_get_string(struct ex *ex, const char *name)
 {
-	struct ex_block *b = get_block(ex, name, EX_STRING);
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_STRING);
+	if (!v)
 		return NULL;
-	return string_ref(b->val.s);
+	return string_ref(v->s);
 }
 
 struct ex_table *ex_get_table(struct ex *ex, const char *name)
 {
-	struct ex_block *b = get_block(ex, name, EX_TABLE);
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_TABLE);
+	if (!v)
 		return NULL;
-	return b->val.t;
+	return v->t;
 }
 
 struct ex_list *ex_get_list(struct ex *ex, const char *name)
 {
-	struct ex_block *b = get_block(ex, name, EX_LIST);;
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_LIST);;
+	if (!v)
 		return NULL;
-	return b->val.list;
+	return v->list;
 }
 
 struct ex_tree *ex_get_tree(struct ex *ex, const char *name)
 {
-	struct ex_block *b = get_block(ex, name, EX_TREE);;
-	if (!b)
+	struct ex_value *v = get_block(ex, name, EX_TREE);;
+	if (!v)
 		return NULL;
-	return b->val.tree;
+	return v->tree;
 }
 
 struct ex_value *ex_table_get(struct ex_table *table, unsigned row, unsigned col)
@@ -606,5 +660,60 @@ struct ex_value *ex_leaf_value(struct ex_tree *tree)
 	if (!tree->is_leaf)
 		return NULL;
 	return &tree->leaf.value;
+}
+
+int ex_row_at_int_key(struct ex_table *t, int key)
+{
+	int col = -1;
+	for (unsigned i = 0; i < t->nr_fields; i++) {
+		if (t->fields[i].is_index) {
+			col = i;
+			break;
+		}
+	}
+	if (col < 0)
+		return -1;
+	if (t->fields[col].type != EX_INT)
+		return -1;
+
+	// TODO: use hash table
+	for (unsigned row = 0; row < t->nr_rows; row++) {
+		if (t->rows[row][col].i == key) {
+			return row;
+		}
+	}
+	return -1;
+}
+
+int ex_row_at_string_key(struct ex_table *t, const char *key)
+{
+	int col = -1;
+	for (unsigned i = 0; i < t->nr_fields; i++) {
+		if (t->fields[i].is_index) {
+			col = i;
+			break;
+		}
+	}
+	if (col < 0)
+		return -1;
+	if (t->fields[col].type != EX_STRING)
+		return -1;
+
+	// TODO: use hash table
+	for (unsigned row = 0; row < t->nr_rows; row++) {
+		if (!strcmp(t->rows[row][col].s->text, key)) {
+			return row;
+		}
+	}
+	return -1;
+}
+
+int ex_col_from_name(struct ex_table *t, const char *name)
+{
+	for (unsigned i = 0; i < t->nr_fields; i++) {
+		if (!strcmp(t->fields[i].name->text, name))
+			return i;
+	}
+	return -1;
 }
 

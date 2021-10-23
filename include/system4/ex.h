@@ -40,6 +40,7 @@ struct ex_value {
 		struct ex_list *list;
 		struct ex_tree *tree;
 	};
+	int id; // for MainEXFile handles
 };
 
 struct ex_field {
@@ -82,6 +83,7 @@ struct ex_tree {
 	union {
 		struct {
 			uint32_t nr_children;
+			struct ex_value *_children;
 			struct ex_tree *children;
 		};
 		struct ex_leaf leaf;
@@ -107,6 +109,7 @@ void ex_free(struct ex *ex);
 void ex_encode(uint8_t *buf, size_t size);
 const char *ex_strtype(enum ex_value_type type);
 
+struct ex_value *ex_get(struct ex *ex, const char *name);
 int32_t ex_get_int(struct ex *ex, const char *name, int32_t dflt);
 float ex_get_float(struct ex *ex, const char *name, float dflt);
 struct string *ex_get_string(struct ex *ex, const char *name);
@@ -118,5 +121,9 @@ struct ex_value *ex_table_get(struct ex_table *table, unsigned row, unsigned col
 struct ex_value *ex_list_get(struct ex_list *list, unsigned i);
 struct ex_tree *ex_tree_get_child(struct ex_tree *tree, const char *name);
 struct ex_value *ex_leaf_value(struct ex_tree *tree);
+
+int ex_row_at_int_key(struct ex_table *t, int key);
+int ex_row_at_string_key(struct ex_table *t, const char *key);
+int ex_col_from_name(struct ex_table *t, const char *name);
 
 #endif /* SYSTE4_EX_H */
