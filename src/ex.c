@@ -566,7 +566,6 @@ struct ex_value *ex_get(struct ex *ex, const char *name)
 		return v;
 	if (v->type != EX_TREE)
 		return NULL;
-	NOTICE("TREE PATH: %s", next+1);
 	return ex_tree_get_path(v->tree, next+1);
 }
 
