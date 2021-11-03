@@ -26,41 +26,108 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "system4.h"
+#include "system4/file.h"
 
-#if (defined(_WIN32) || defined(__WIN32__))
+#ifdef _WIN32
 #include <Windows.h>
 #include <direct.h>
+
+static wchar_t *utf8_to_wchar(const char *str)
+{
+	int nr_wchars = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+	wchar_t *wstr = xmalloc(nr_wchars * sizeof(wchar_t));
+	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, nr_wchars);
+	return wstr;
+}
+
+static char *wchar_to_utf8(const wchar_t *wstr)
+{
+	int nr_chars = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+	char *str = xmalloc(nr_chars);
+	WideCharToMultiByte(CP_UTF8, 0, wstr, -1, str, nr_chars, NULL, NULL);
+	return str;
+}
+
 static int make_dir(const char *path, possibly_unused int mode)
 {
-	int nr_wchars = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
-	wchar_t *wpath = xmalloc(nr_wchars * sizeof(wchar_t));
-	MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, nr_wchars);
-
+	wchar_t *wpath = utf8_to_wchar(path);
 	int r = _wmkdir(wpath);
 	free(wpath);
 	return r;
 }
-#else
-#define make_dir(path, mode) mkdir(path, mode)
-#endif
+
+UDIR *opendir_utf8(const char *path)
+{
+	wchar_t *wpath = utf8_to_wchar(path);
+	UDIR *r = _wopendir(wpath);
+	free(wpath);
+	return r;
+}
+
+int closedir_utf8(UDIR *dir)
+{
+	return _wclosedir(dir);
+}
+
+char *readdir_utf8(UDIR *dir)
+{
+	struct _wdirent *e = _wreaddir(dir);
+	if (!e)
+		return NULL;
+	return wchar_to_utf8(e->d_name);
+}
+
+int stat_utf8(const char *path, ustat *st)
+{
+	wchar_t *wpath = utf8_to_wchar(path);
+	int r = _wstat64(wpath, st);
+	free(wpath);
+	return r;
+}
 
 FILE *file_open_utf8(const char *path, const char *mode)
 {
-#ifdef _WIN32
-	int nr_wchars = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
-	wchar_t *wpath = xmalloc(nr_wchars * sizeof(wchar_t));
-	MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, nr_wchars);
-
+	wchar_t *wpath = utf8_to_wchar(path);
 	wchar_t wmode[64];
 	mbstowcs(wmode, mode, 64);
 
 	FILE *f = _wfopen(wpath, wmode);
 	free(wpath);
 	return f;
-#else
-	return fopen(path, mode);
-#endif
 }
+
+#else
+
+#define make_dir(path, mode) mkdir(path, mode)
+
+UDIR *opendir_utf8(const char *path)
+{
+	return opendir(path);
+}
+
+int closedir_utf8(UDIR *dir)
+{
+	return closedir(dir);
+}
+
+char *readdir_utf8(UDIR *dir)
+{
+	struct dirent *e = readdir(dir);
+	if (!e)
+		return NULL;
+	return strdup(e->d_name);
+}
+
+int stat_utf8(const char *path, ustat *st)
+{
+	return stat(path, st);
+}
+
+FILE *file_open_utf8(const char *path, const char *mode)
+{
+	return fopen(path, mode);
+}
+#endif
 
 void *file_read(const char *path, size_t *len_out)
 {
@@ -68,7 +135,7 @@ void *file_read(const char *path, size_t *len_out)
 	long len;
 	uint8_t *buf;
 
-	if (!(fp = fopen(path, "rb")))
+	if (!(fp = file_open_utf8(path, "rb")))
 		return NULL;
 
 	fseek(fp, 0, SEEK_END);
@@ -94,7 +161,7 @@ void *file_read(const char *path, size_t *len_out)
 
 bool file_write(const char *path, uint8_t *data, size_t data_size)
 {
-	FILE *fp = fopen(path, "wb");
+	FILE *fp = file_open_utf8(path, "wb");
 	if (!fp)
 		return false;
 	int r = fwrite(data, data_size, 1, fp);
@@ -117,7 +184,14 @@ bool file_copy(const char *src, const char *dst)
 
 bool file_exists(const char *path)
 {
+#ifdef _WIN32
+	wchar_t *wpath = utf8_to_wchar(path);
+	bool r = _waccess(wpath, F_OK) != -1;
+	free(wpath);
+	return r;
+#else
 	return access(path, F_OK) != -1;
+#endif
 }
 
 char *path_dirname(const char *path)
@@ -192,8 +266,8 @@ bool is_directory(const char *path)
 
 off_t file_size(const char *path)
 {
-	struct stat s;
-	stat(path, &s);
+	ustat s;
+	stat_utf8(path, &s);
 	if (!S_ISREG(s.st_mode))
 		return -1;
 	return s.st_size;

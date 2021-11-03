@@ -22,7 +22,22 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <dirent.h>
 
+#ifdef _WIN32
+typedef _WDIR UDIR;
+typedef struct _stat64 ustat;
+#else
+typedef DIR UDIR;
+typedef struct stat ustat;
+#endif
+
+struct stat;
+
+UDIR *opendir_utf8(const char *path);
+int closedir_utf8(UDIR *dir);
+char *readdir_utf8(UDIR *dir);
+int stat_utf8(const char *path, ustat *st);
 FILE *file_open_utf8(const char *path, const char *mode);
 void *file_read(const char *path, size_t *len_out);
 bool file_write(const char *path, uint8_t *data, size_t data_size);

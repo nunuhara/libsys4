@@ -408,6 +408,8 @@ struct ex *ex_read_file(const char *path)
 {
 	size_t size;
 	uint8_t *data = file_read(path, &size);
+	if (!data)
+		return NULL;
 	struct ex *ex = ex_read(data, size);
 	free(data);
 	return ex;

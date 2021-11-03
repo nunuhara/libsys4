@@ -30,6 +30,7 @@
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/ain.h"
+#include "system4/file.h"
 #include "system4/hashtable.h"
 #include "system4/instructions.h"
 #include "system4/mt19937int.h"
@@ -1259,7 +1260,7 @@ uint8_t *ain_read(const char *path, long *len, int *error)
 	FILE *fp;
 	uint8_t *buf = NULL;
 
-	if (!(fp = fopen(path, "rb"))) {
+	if (!(fp = file_open_utf8(path, "rb"))) {
 		*error = AIN_FILE_ERROR;
 		goto err;
 	}
