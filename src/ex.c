@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <math.h>
 #include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
@@ -29,6 +30,8 @@
 
 #define EX_ERROR(buf, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
 #define EX_WARNING(buf, fmt, ...) WARNING("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
+
+static struct ex_block *ex_get_block(struct ex *ex, const char *name, enum ex_value_type type);
 
 const char *ex_strtype(enum ex_value_type type)
 {
@@ -415,6 +418,274 @@ struct ex *ex_read_file(const char *path)
 	return ex;
 }
 
+static void ex_copy_value(struct ex_value *out, struct ex_value *in);
+
+static struct ex_field *ex_copy_fields(struct ex_field *fields, unsigned nr_fields)
+{
+	struct ex_field *out = xcalloc(nr_fields, sizeof(struct ex_field));
+	for (unsigned i = 0; i < nr_fields; i++) {
+		out[i].type = fields[i].type;
+		out[i].name = string_ref(fields[i].name);
+		out[i].has_value = fields[i].has_value;
+		if (fields[i].has_value) {
+			ex_copy_value(&out[i].value, &fields[i].value);
+		}
+		out[i].is_index = fields[i].is_index;
+		out[i].nr_subfields = fields[i].nr_subfields;
+		if (fields[i].nr_subfields) {
+			out[i].subfields = ex_copy_fields(fields[i].subfields, fields[i].nr_subfields);
+		}
+	}
+	return out;
+}
+
+static struct ex_value *ex_copy_values(struct ex_value *values, unsigned nr_values)
+{
+	struct ex_value *out = xcalloc(nr_values, sizeof(struct ex_value));
+	for (unsigned i = 0; i < nr_values; i++) {
+		ex_copy_value(&out[i], &values[i]);
+	}
+	return out;
+}
+
+static struct ex_table *ex_copy_table(struct ex_table *t)
+{
+	struct ex_table *out = xmalloc(sizeof(struct ex_table));
+	out->nr_fields = t->nr_fields;
+	out->fields = ex_copy_fields(t->fields, t->nr_fields);
+	out->nr_columns = t->nr_columns;
+	out->nr_rows = t->nr_rows;
+	out->rows = xcalloc(t->nr_rows, sizeof(struct ex_value*));
+	for (unsigned i = 0; i < t->nr_rows; i++) {
+		out->rows[i] = ex_copy_values(t->rows[i], t->nr_columns);
+	}
+	return out;
+}
+
+static struct ex_list *ex_copy_list(struct ex_list *list)
+{
+	struct ex_list *out = xmalloc(sizeof(struct ex_list));
+	out->nr_items = list->nr_items;
+	out->items = xcalloc(list->nr_items, sizeof(struct ex_list_item));
+	for (unsigned i = 0; i < list->nr_items; i++) {
+		out->items[i].size = list->items[i].size;
+		ex_copy_value(&out->items[i].value, &list->items[i].value);
+	}
+	return out;
+}
+
+static void _ex_copy_tree(struct ex_tree *out, struct ex_tree *tree)
+{
+	out->name = string_ref(tree->name);
+	out->is_leaf = tree->is_leaf;
+	if (tree->is_leaf) {
+		out->leaf.size = tree->leaf.size;
+		out->leaf.name = string_ref(tree->leaf.name);
+		ex_copy_value(&out->leaf.value, &tree->leaf.value);
+		return;
+	}
+
+	out->nr_children = tree->nr_children;
+	out->_children = xcalloc(tree->nr_children, sizeof(struct ex_value));
+	out->children = xcalloc(tree->nr_children, sizeof(struct ex_tree));
+	for (unsigned i = 0; i < tree->nr_children; i++) {
+		out->_children[i].type = EX_TREE;
+		out->_children[i].tree = &out->children[i];
+		_ex_copy_tree(&out->children[i], &tree->children[i]);
+	}
+}
+
+static struct ex_tree *ex_copy_tree(struct ex_tree *tree)
+{
+	struct ex_tree *out = xmalloc(sizeof(struct ex_tree));
+	_ex_copy_tree(out, tree);
+	return out;
+}
+
+static void ex_copy_value(struct ex_value *out, struct ex_value *in)
+{
+	out->type = in->type;
+	out->id = in->id;
+	switch (in->type) {
+	case EX_INT:    out->i = in->i; break;
+	case EX_FLOAT:  out->f = in->f; break;
+	case EX_STRING: out->s = string_ref(in->s); break;
+	case EX_TABLE:  out->t = ex_copy_table(in->t); break;
+	case EX_LIST:   out->list = ex_copy_list(in->list); break;
+	case EX_TREE:   out->tree = ex_copy_tree(in->tree); break;
+	}
+}
+
+static void ex_copy_block(struct ex_block *out, struct ex_block *in)
+{
+	out->size = in->size;
+	out->name = string_ref(in->name);
+	ex_copy_value(&out->val, &in->val);
+}
+
+static bool ex_value_equal(struct ex_value *a, struct ex_value *b)
+{
+	if (a->type != b->type)
+		return false;
+	switch (a->type) {
+	case EX_INT:    return a->i == b->i;
+	case EX_FLOAT:  return fabs(a->f - b->f) < 0.00001;
+	case EX_STRING: return !strcmp(a->s->text, b->s->text);
+	default:        return false;
+	}
+}
+
+static bool ex_field_equal(struct ex_field *a, struct ex_field *b)
+{
+	if (a->type != b->type)
+		return false;
+	if (strcmp(a->name->text, b->name->text))
+		return false;
+	if (a->has_value != b->has_value)
+		return false;
+	if (a->has_value && !ex_value_equal(&a->value, &b->value))
+		return false;
+	if (a->is_index != b->is_index)
+		return false;
+	if (a->nr_subfields != b->nr_subfields)
+		return false;
+	for (unsigned i = 0; i < a->nr_subfields; i++) {
+		if (!ex_field_equal(&a->subfields[i], &b->subfields[i]))
+			return false;
+	}
+	return true;
+}
+
+static bool ex_header_equal(struct ex_table *a, struct ex_table *b)
+{
+	if (a->nr_columns != b->nr_columns)
+		return false;
+	for (unsigned i = 0; i < a->nr_columns; i++) {
+		if (!ex_field_equal(&a->fields[i], &b->fields[i]))
+			return false;
+	}
+	return true;
+}
+
+static void ex_append_table(struct ex_table *out, struct ex_table *in)
+{
+	if (!ex_header_equal(out, in))
+		ERROR("Table headers do not match");
+
+	// FIXME: should check if key exists in table and update rather than append
+	out->rows = xrealloc_array(out->rows, out->nr_rows, out->nr_rows+in->nr_rows, sizeof(struct ex_value*));
+	for (unsigned i = 0; i < in->nr_rows; i++) {
+		out->rows[out->nr_rows+i] = ex_copy_values(in->rows[i], in->nr_columns);
+	}
+	out->nr_rows += in->nr_rows;
+}
+
+static void ex_append_list(struct ex_list *out, struct ex_list *in)
+{
+	out->items = xrealloc_array(out->items, out->nr_items, out->nr_items+in->nr_items, sizeof(struct ex_list_item));
+	for (unsigned i = 0; i < in->nr_items; i++) {
+		out->items[out->nr_items+i].size = in->items[i].size;
+		ex_copy_value(&out->items[out->nr_items+i].value, &in->items[i].value);
+	}
+	out->nr_items += in->nr_items;
+}
+
+static void ex_append_tree(struct ex_tree *out, struct ex_tree *in)
+{
+	if (out->is_leaf || in->is_leaf)
+		ERROR("Tried to append to leaf node");
+
+	// FIXME: should check if name exists in tree and update rather than append
+	out->_children = xrealloc_array(out->_children, out->nr_children, out->nr_children+in->nr_children, sizeof(struct ex_value));
+	out->children = xrealloc_array(out->children, out->nr_children, out->nr_children+in->nr_children, sizeof(struct ex_tree));
+	for (unsigned i = 0; i < in->nr_children; i++) {
+		out->_children[out->nr_children+i].type = EX_TREE;
+		out->_children[out->nr_children+i].tree = &out->children[out->nr_children+i];
+		_ex_copy_tree(&out->children[out->nr_children+i], &in->children[i]);
+	}
+	out->nr_children += in->nr_children;
+}
+
+/*
+ * Append data from `append` to data in `base`, and return an ex object
+ * containing only the objects added/modified in `append`.
+ */
+struct ex *ex_extract_append(struct ex *base, struct ex *append)
+{
+	struct ex *out = xmalloc(sizeof(struct ex));
+	out->nr_blocks = 0;
+	out->blocks = NULL;
+
+	for (unsigned i = 0; i < append->nr_blocks; i++) {
+		struct ex_block *src = ex_get_block(base, append->blocks[i].name->text, append->blocks[i].val.type);
+		out->blocks = xrealloc_array(out->blocks, out->nr_blocks, out->nr_blocks+1, sizeof(struct ex_block));
+		if (src) {
+			switch (src->val.type) {
+			case EX_INT:
+			case EX_FLOAT:
+			case EX_STRING:
+				ex_copy_block(&out->blocks[out->nr_blocks], &append->blocks[i]);
+				break;
+			case EX_TABLE:
+				ex_copy_block(&out->blocks[out->nr_blocks], src);
+				ex_append_table(out->blocks[out->nr_blocks].val.t, append->blocks[i].val.t);
+				break;
+			case EX_LIST:
+				ex_copy_block(&out->blocks[out->nr_blocks], src);
+				ex_append_list(out->blocks[out->nr_blocks].val.list, append->blocks[i].val.list);
+				break;
+			case EX_TREE:
+				ex_copy_block(&out->blocks[out->nr_blocks], src);
+				ex_append_tree(out->blocks[out->nr_blocks].val.tree, append->blocks[i].val.tree);
+				break;
+			}
+		} else {
+			ex_copy_block(&out->blocks[out->nr_blocks], &append->blocks[i]);
+		}
+		out->nr_blocks++;
+	}
+	return out;
+}
+
+void ex_append(struct ex *base, struct ex *append)
+{
+	for (unsigned i = 0; i < append->nr_blocks; i++) {
+		struct ex_block *src = ex_get_block(base, append->blocks[i].name->text, append->blocks[i].val.type);
+		if (src) {
+			switch (src->val.type) {
+			case EX_INT:    src->val.i = append->blocks[i].val.i; break;
+			case EX_FLOAT:  src->val.f = append->blocks[i].val.f; break;
+			case EX_STRING: src->val.s = string_ref(append->blocks[i].val.s); break;
+			case EX_TABLE:  ex_append_table(src->val.t, append->blocks[i].val.t); break;
+			case EX_LIST:   ex_append_list(src->val.list, append->blocks[i].val.list); break;
+			case EX_TREE:   ex_append_tree(src->val.tree, append->blocks[i].val.tree); break;
+			}
+		} else {
+			base->blocks = xrealloc_array(base->blocks, base->nr_blocks, base->nr_blocks+1, sizeof(struct ex_block));
+			ex_copy_block(&base->blocks[base->nr_blocks], &append->blocks[i]);
+			base->nr_blocks++;
+		}
+	}
+}
+
+static void ex_free_value(struct ex_value *value);
+
+void ex_replace(struct ex *base, struct ex *replace)
+{
+	for (unsigned i = 0; i < replace->nr_blocks; i++) {
+		struct ex_block *src = ex_get_block(base, replace->blocks[i].name->text, replace->blocks[i].val.type);
+		if (src) {
+			ex_free_value(&src->val);
+			src->size = replace->blocks[i].size;
+			ex_copy_value(&src->val, &replace->blocks[i].val);
+		} else {
+			base->blocks = xrealloc_array(base->blocks, base->nr_blocks, base->nr_blocks+1, sizeof(struct ex_block));
+			ex_copy_block(&base->blocks[base->nr_blocks], &replace->blocks[i]);
+			base->nr_blocks++;
+		}
+	}
+}
+
 static void ex_free_table(struct ex_table *table);
 static void ex_free_list(struct ex_list *list);
 static void ex_free_tree(struct ex_tree *tree);
@@ -571,63 +842,63 @@ struct ex_value *ex_get(struct ex *ex, const char *name)
 	return ex_tree_get_path(v->tree, next+1);
 }
 
-static struct ex_value *get_block(struct ex *ex, const char *name, enum ex_value_type type)
+static struct ex_block *ex_get_block(struct ex *ex, const char *name, enum ex_value_type type)
 {
 	for (unsigned i = 0; i < ex->nr_blocks; i++) {
 		if (ex->blocks[i].val.type != type)
 			continue;
 		if (!strcmp(ex->blocks[i].name->text, name))
-			return &ex->blocks[i].val;
+			return &ex->blocks[i];
 	}
 	return NULL;
 }
 
 int32_t ex_get_int(struct ex *ex, const char *name, int32_t dflt)
 {
-	struct ex_value *v = get_block(ex, name, EX_INT);
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_INT);
+	if (!b)
 		return dflt;
-	return v->i;
+	return b->val.i;
 }
 
 float ex_get_float(struct ex *ex, const char *name, float dflt)
 {
-	struct ex_value *v = get_block(ex, name, EX_FLOAT);
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_FLOAT);
+	if (!b)
 		return dflt;
-	return v->f;
+	return b->val.f;
 }
 
 struct string *ex_get_string(struct ex *ex, const char *name)
 {
-	struct ex_value *v = get_block(ex, name, EX_STRING);
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_STRING);
+	if (!b)
 		return NULL;
-	return string_ref(v->s);
+	return string_ref(b->val.s);
 }
 
 struct ex_table *ex_get_table(struct ex *ex, const char *name)
 {
-	struct ex_value *v = get_block(ex, name, EX_TABLE);
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_TABLE);
+	if (!b)
 		return NULL;
-	return v->t;
+	return b->val.t;
 }
 
 struct ex_list *ex_get_list(struct ex *ex, const char *name)
 {
-	struct ex_value *v = get_block(ex, name, EX_LIST);;
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_LIST);;
+	if (!b)
 		return NULL;
-	return v->list;
+	return b->val.list;
 }
 
 struct ex_tree *ex_get_tree(struct ex *ex, const char *name)
 {
-	struct ex_value *v = get_block(ex, name, EX_TREE);;
-	if (!v)
+	struct ex_block *b = ex_get_block(ex, name, EX_TREE);;
+	if (!b)
 		return NULL;
-	return v->tree;
+	return b->val.tree;
 }
 
 struct ex_value *ex_table_get(struct ex_table *table, unsigned row, unsigned col)
