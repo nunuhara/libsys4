@@ -259,8 +259,8 @@ const char *file_extension(const char *path)
 
 bool is_directory(const char *path)
 {
-	struct stat s;
-	stat(path, &s);
+	ustat s;
+	stat_utf8(path, &s);
 	return S_ISDIR(s.st_mode);
 }
 
