@@ -590,20 +590,44 @@ static void ex_append_list(struct ex_list *out, struct ex_list *in)
 	out->nr_items += in->nr_items;
 }
 
+static void ex_append_tree(struct ex_tree *out, struct ex_tree *in);
+static void ex_free_value(struct ex_value *value);
+
+static void ex_tree_append_child(struct ex_tree *out, struct ex_tree *child)
+{
+	// look for a child node with the same name, and update if one exists
+	for (unsigned i = 0; i < out->nr_children; i++) {
+		struct ex_tree *out_child = &out->children[i];
+		if (!strcmp(child->name->text, out_child->name->text)) {
+			if (child->is_leaf != out_child->is_leaf)
+				ERROR("Tree nodes with same name have different type");
+			if (child->is_leaf) {
+				ex_free_value(&out_child->leaf.value);
+				ex_copy_value(&out_child->leaf.value, &child->leaf.value);
+			} else {
+				ex_append_tree(out_child, child);
+			}
+			return;
+		}
+	}
+
+	// no child with same name, append new child
+	out->_children = xrealloc_array(out->_children, out->nr_children, out->nr_children+1, sizeof(struct ex_value));
+	out->children = xrealloc_array(out->children, out->nr_children, out->nr_children+1, sizeof(struct ex_tree));
+	out->_children[out->nr_children].type = EX_TREE;
+	out->_children[out->nr_children].tree = &out->children[out->nr_children];
+	_ex_copy_tree(&out->children[out->nr_children], child);
+	out->nr_children++;
+}
+
 static void ex_append_tree(struct ex_tree *out, struct ex_tree *in)
 {
 	if (out->is_leaf || in->is_leaf)
 		ERROR("Tried to append to leaf node");
 
-	// FIXME: should check if name exists in tree and update rather than append
-	out->_children = xrealloc_array(out->_children, out->nr_children, out->nr_children+in->nr_children, sizeof(struct ex_value));
-	out->children = xrealloc_array(out->children, out->nr_children, out->nr_children+in->nr_children, sizeof(struct ex_tree));
 	for (unsigned i = 0; i < in->nr_children; i++) {
-		out->_children[out->nr_children+i].type = EX_TREE;
-		out->_children[out->nr_children+i].tree = &out->children[out->nr_children+i];
-		_ex_copy_tree(&out->children[out->nr_children+i], &in->children[i]);
+		ex_tree_append_child(out, &in->children[i]);
 	}
-	out->nr_children += in->nr_children;
 }
 
 /*
@@ -667,8 +691,6 @@ void ex_append(struct ex *base, struct ex *append)
 		}
 	}
 }
-
-static void ex_free_value(struct ex_value *value);
 
 void ex_replace(struct ex *base, struct ex *replace)
 {
