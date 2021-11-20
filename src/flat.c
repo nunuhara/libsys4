@@ -55,7 +55,8 @@ static void flat_free_data(struct archive_data *data)
 static void flat_free(struct archive *_ar)
 {
 	struct flat_archive *ar = (struct flat_archive*)_ar;
-	free(ar->data);
+	if (ar->needs_free)
+		free(ar->data);
 	free(ar->libl_entries);
 	for (unsigned i = 0; i < ar->nr_talt_entries; i++) {
 		free(ar->talt_entries[i].metadata);
@@ -303,5 +304,6 @@ struct flat_archive *flat_open_file(const char *path, possibly_unused int flags,
 		return NULL;
 	}
 
+	ar->needs_free = true;
 	return ar;
 }

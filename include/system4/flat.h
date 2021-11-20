@@ -83,6 +83,7 @@ struct flat_archive {
 	uint32_t nr_talt_entries;
 	struct talt_entry *talt_entries;
 
+	bool needs_free;
 	size_t data_size;
 	uint8_t *data;
 };
