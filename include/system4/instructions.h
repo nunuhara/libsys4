@@ -389,13 +389,23 @@ enum instruction_argtype {
 //       Only used in one instruction--maybe special case?
 #define T_LOCMEMB T_INT
 
+#define T_PAGE T_INT
+#define T_VAR T_INT
+
+#define STACK_MAX_ARGS 6
+#define STACK_MAX_OUT 6
+
 struct instruction {
-	const enum opcode opcode; // the opcode
-	const char * const name;  // assembler name
-	int nr_args;              // number of arguments (???: always 1 or 0?)
-	int ip_inc;               // amount to increment instruction pointer after instruction
-	const bool implemented;   // implemented in xsystem4
+	const enum opcode opcode;       // the opcode
+	const char * const name;        // assembler name
+	int ip_inc;                     // amount to increment instruction pointer after instruction
+	const bool implemented;         // implemented in xsystem4
+	int nr_args;                    // number of arguments
 	int args[INSTRUCTION_MAX_ARGS]; // argument data types
+	int nr_stack_args;              // number of arguments taken from the stack
+	int stack_args[STACK_MAX_ARGS]; // stack-argument data types
+	int nr_stack_out;               // number of stack output values
+	int stack_out[STACK_MAX_OUT];  // stack output value data types
 };
 
 extern const struct syscall syscalls[NR_SYSCALLS];
