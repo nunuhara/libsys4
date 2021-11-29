@@ -24,7 +24,11 @@
 // TODO: should put in a separate header and guard with feature checks
 #define const_pure __attribute__((const))
 #define mem_alloc __attribute__((malloc))
+#ifdef __cplusplus
+#define noreturn [[ noreturn ]]
+#else
 #define noreturn _Noreturn
+#endif
 #define possibly_unused __attribute__((unused))
 #define warn_unused __attribute__((warn_unused_result))
 
