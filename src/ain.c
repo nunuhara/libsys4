@@ -62,8 +62,12 @@ static void func_ht_add(struct ain *ain, int i)
 	}
 }
 
-static void init_func_ht(struct ain *ain)
+void ain_index_functions(struct ain *ain)
 {
+	if (ain->_func_ht) {
+		ht_foreach_value(ain->_func_ht, free);
+		ht_free(ain->_func_ht);
+	}
 	ain->_func_ht = ht_create(1024);
 	for (int i = 0; i < ain->nr_functions; i++) {
 		func_ht_add(ain, i);
@@ -1114,7 +1118,7 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 		start_section(r, &ain->FUNC);
 		ain->nr_functions = read_int32(r);
 		ain->functions = read_functions(r, ain->nr_functions, ain);
-		init_func_ht(ain);
+		ain_index_functions(ain);
 	} else if (TAG_EQ("GLOB")) {
 		start_section(r, &ain->GLOB);
 		ain->nr_globals = read_int32(r);
@@ -1406,7 +1410,7 @@ struct ain *ain_new(int major_version, int minor_version)
 	ain->strings[0] = make_string("", 0);
 
 	init_struct_ht(ain);
-	init_func_ht(ain);
+	ain_index_functions(ain);
 
 	return ain;
 }
