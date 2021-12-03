@@ -43,7 +43,37 @@ void free_string(struct string *str)
 	}
 }
 
-struct string *make_string(const char *str, unsigned int len)
+static struct string *cow_check(struct string *s)
+{
+	if (s->cow && s->ref > 1) {
+		struct string *out = string_dup(s);
+		free_string(s);
+		return out;
+	}
+	if (s->cow)
+		s->cow = 0;
+	return s;
+}
+
+struct string *string_alloc(unsigned int len)
+{
+	struct string *s = alloc_string(len);
+	s->size = len;
+	s->ref = 1;
+	s->cow = 0;
+	s->text[len] = '\0';
+	return s;
+}
+
+struct string *string_realloc(struct string *s, unsigned int size)
+{
+	s = xrealloc(cow_check(s), sizeof(struct string) + size + 1);
+	s->size = size;
+	s->text[size] = '\0';
+	return s;
+}
+
+struct string *make_string(const char *str, size_t len)
 {
 	struct string *s = alloc_string(len);
 	s->size = len;
@@ -160,52 +190,34 @@ struct string *string_copy(const struct string *s, int index, int len)
 	return make_string(s->text + index, len);
 }
 
-static struct string *cow_check(struct string *s)
-{
-	if (s->cow && s->ref > 1) {
-		struct string *out = string_dup(s);
-		free_string(s);
-		return out;
-	}
-	if (s->cow)
-		s->cow = 0;
-	return s;
-}
-
 void string_append_cstr(struct string **_a, const char *b, size_t b_size)
 {
 	if (!b_size)
 		return;
-	struct string *a = *_a = cow_check(*_a);
-
-	a = xrealloc(a, sizeof(struct string) + a->size + b_size + 1);
-	memcpy(a->text + a->size, b, b_size);
-	a->size += b_size;
-	a->text[a->size] = '\0';
+	size_t a_size = (*_a)->size;
+	struct string *a = string_realloc(*_a, a_size + b_size);
+	memcpy(a->text + a_size, b, b_size);
 	*_a = a;
 }
 
 void string_append(struct string **_a, const struct string *b)
 {
-	struct string *a = *_a = cow_check(*_a);
-	size_t a_size = a->size;
-
-	a = xrealloc(a, sizeof(struct string) + a->size + b->size + 1);
-	a->size = a_size + b->size;
-	memcpy(a->text + a_size, b->text, b->size + 1);
+	size_t a_size = (*_a)->size;
+	struct string *a = string_realloc(*_a, a_size + b->size);
+	memcpy(a->text + a_size, b->text, b->size);
 	*_a = a;
 }
 
-void string_push_back(struct string **s, int c)
+void string_push_back(struct string **_s, int c)
 {
 	int bytes = SJIS_2BYTE(c) ? 2 : 1;
-	*s = cow_check(*s);
-	*s = xrealloc(*s, sizeof(struct string) + (*s)->size + bytes + 1);
-	(*s)->text[(*s)->size++] = c & 0xFF;
+
+	size_t s_size = (*_s)->size;
+	struct string *s = string_realloc(*_s, s_size + bytes);
+	s->text[s_size] = c & 0xFF;
 	if (bytes == 2) {
-		(*s)->text[(*s)->size++] = c >> 8;
+		s->text[s_size+1] = c >> 8;
 	}
-	(*s)->text[(*s)->size] = '\0';
 }
 
 void string_pop_back(struct string **s)

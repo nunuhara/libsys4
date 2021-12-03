@@ -34,7 +34,9 @@ extern struct string EMPTY_STRING;
 void free_string(struct string *str);
 
 // constructors
-struct string *make_string(const char *str, unsigned int len);
+struct string *make_string(const char *str, size_t len);
+struct string *string_alloc(unsigned int len);
+struct string *string_realloc(struct string *s, unsigned int size);
 struct string *string_ref(struct string *s);
 struct string *string_dup(const struct string *in);
 struct string *integer_to_string(int n);
