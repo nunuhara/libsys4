@@ -103,7 +103,9 @@ struct ex {
 
 uint8_t *ex_decrypt(const char *path, size_t *size, uint32_t *nr_blocks);
 struct ex *ex_read(const uint8_t *data, size_t size);
+struct ex *ex_read_conv(const uint8_t *data, size_t size, struct string*(*conv)(const char*,size_t));
 struct ex *ex_read_file(const char *path);
+struct ex *ex_read_file_conv(const char *path, struct string*(*conv)(const char*,size_t));
 void ex_append(struct ex *base, struct ex *append);
 struct ex *ex_extract_append(struct ex *base, struct ex *append);
 void ex_replace(struct ex *base, struct ex *replace);

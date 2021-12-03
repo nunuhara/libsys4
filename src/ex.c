@@ -28,8 +28,14 @@
 #include "system4/file.h"
 #include "system4/string.h"
 
-#define EX_ERROR(buf, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
-#define EX_WARNING(buf, fmt, ...) WARNING("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
+#define _EX_ERROR(buf, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
+#define EX_ERROR(reader, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(reader)->buf.index, ##__VA_ARGS__)
+#define EX_WARNING(reader, fmt, ...) WARNING("At 0x%08x: " fmt, (uint32_t)(reader)->buf.index, ##__VA_ARGS__)
+
+struct ex_reader {
+	struct buffer buf;
+	struct string *(*conv)(const char*, size_t);
+};
 
 static struct ex_block *ex_get_block(struct ex *ex, const char *name, enum ex_value_type type);
 
@@ -49,9 +55,19 @@ const char *ex_strtype(enum ex_value_type type)
 uint8_t ex_decode_table[256];
 uint8_t ex_decode_table_inv[256];
 
-static struct string *ex_read_string(struct buffer *r)
+static struct string *ex_read_pascal_string(struct ex_reader *r)
 {
-	struct string *s = buffer_read_pascal_string(r);
+	int32_t len = buffer_read_int32(&r->buf);
+	if (len < 0)
+		EX_ERROR(r, "Invalid string length: %d", len);
+	struct string *s = r->conv(buffer_strdata(&r->buf), len);
+	buffer_skip(&r->buf, len);
+	return s;
+}
+
+static struct string *ex_read_string(struct ex_reader *r)
+{
+	struct string *s = ex_read_pascal_string(r);
 	// TODO: at most 3 bytes padding, no need for full strlen
 	s->size = strlen(s->text);
 	// TODO: validate?
@@ -105,11 +121,11 @@ static uint8_t *ex_decode(uint8_t *data, size_t *len, uint32_t *nr_blocks)
 
 	buffer_init(&r, data, *len);
 	if (strncmp(buffer_strdata(&r), "HEAD", 4))
-		EX_ERROR(&r, "Missing HEAD section marker");
+		_EX_ERROR(&r, "Missing HEAD section marker");
 	buffer_skip(&r, 8);
 
 	if (strncmp(buffer_strdata(&r), "EXTF", 4)) {
-		EX_ERROR(&r, "Missing EXTF section marker");
+		_EX_ERROR(&r, "Missing EXTF section marker");
 	}
 	buffer_skip(&r, 8);
 
@@ -119,7 +135,7 @@ static uint8_t *ex_decode(uint8_t *data, size_t *len, uint32_t *nr_blocks)
 		buffer_read_int32(&r);
 
 	if (strncmp(buffer_strdata(&r), "DATA", 4)) {
-		EX_ERROR(&r, "Missing DATA section marker");
+		_EX_ERROR(&r, "Missing DATA section marker");
 	}
 	buffer_skip(&r, 4);
 
@@ -146,21 +162,21 @@ static uint8_t *ex_decode(uint8_t *data, size_t *len, uint32_t *nr_blocks)
 	return out;
 }
 
-static void ex_read_fields(struct buffer *r, struct ex_table *table);
-static void ex_read_table(struct buffer *r, struct ex_table *table, struct ex_field *fields, uint32_t nr_fields);
-static void ex_read_list(struct buffer *r, struct ex_list *list);
+static void ex_read_fields(struct ex_reader *r, struct ex_table *table);
+static void ex_read_table(struct ex_reader *r, struct ex_table *table, struct ex_field *fields, uint32_t nr_fields);
+static void ex_read_list(struct ex_reader *r, struct ex_list *list);
 
-static void _ex_read_value(struct buffer *r, struct ex_value *value, struct ex_field *fields, uint32_t nr_fields)
+static void _ex_read_value(struct ex_reader *r, struct ex_value *value, struct ex_field *fields, uint32_t nr_fields)
 {
 	switch (value->type) {
 	case EX_INT:
-		value->i = buffer_read_int32(r);
+		value->i = buffer_read_int32(&r->buf);
 		break;
 	case EX_FLOAT:
-		value->f = buffer_read_float(r);
+		value->f = buffer_read_float(&r->buf);
 		break;
 	case EX_STRING:
-		value->s = buffer_read_pascal_string(r);
+		value->s = ex_read_pascal_string(r);
 		break;
 	case EX_TABLE:
 		value->t = xcalloc(1, sizeof(struct ex_table));
@@ -181,21 +197,21 @@ static void _ex_read_value(struct buffer *r, struct ex_value *value, struct ex_f
 	}
 }
 
-static void ex_read_value(struct buffer *r, struct ex_value *value, struct ex_field *fields, uint32_t nr_fields)
+static void ex_read_value(struct ex_reader *r, struct ex_value *value, struct ex_field *fields, uint32_t nr_fields)
 {
-	value->type = buffer_read_int32(r);
+	value->type = buffer_read_int32(&r->buf);
 	_ex_read_value(r, value, fields, nr_fields);
 }
 
-static void ex_read_field(struct buffer *r, struct ex_field *field)
+static void ex_read_field(struct ex_reader *r, struct ex_field *field)
 {
-	field->type = buffer_read_int32(r);
+	field->type = buffer_read_int32(&r->buf);
 	if (field->type < EX_INT || field->type > EX_TABLE)
 		EX_ERROR(r, "Unknown/invalid field type: %d", field->type);
 
 	field->name = ex_read_string(r);
-	field->has_value = buffer_read_int32(r);
-	field->is_index = buffer_read_int32(r);
+	field->has_value = buffer_read_int32(&r->buf);
+	field->is_index = buffer_read_int32(&r->buf);
 	if (field->has_value) {
 		field->value.type = field->type;
 		_ex_read_value(r, &field->value, NULL, 0);
@@ -206,7 +222,7 @@ static void ex_read_field(struct buffer *r, struct ex_field *field)
 		EX_WARNING(r, "Non-boolean for field->is_index: %d", field->is_index);
 
 	if (field->type == EX_TABLE) {
-		field->nr_subfields = buffer_read_int32(r);
+		field->nr_subfields = buffer_read_int32(&r->buf);
 		if (field->nr_subfields > 255)
 			EX_ERROR(r, "Too many subfields: %u", field->nr_subfields);
 
@@ -217,9 +233,9 @@ static void ex_read_field(struct buffer *r, struct ex_field *field)
 	}
 }
 
-static void ex_read_fields(struct buffer *r, struct ex_table *table)
+static void ex_read_fields(struct ex_reader *r, struct ex_table *table)
 {
-	table->nr_fields = buffer_read_int32(r);
+	table->nr_fields = buffer_read_int32(&r->buf);
 	table->fields = xcalloc(table->nr_fields, sizeof(struct ex_field));
 	for (uint32_t i = 0; i < table->nr_fields; i++) {
 		ex_read_field(r, &table->fields[i]);
@@ -234,15 +250,15 @@ enum table_layout {
 
 static enum table_layout table_layout = TABLE_DEFAULT;
 
-static void ex_read_table(struct buffer *r, struct ex_table *table, struct ex_field *fields, uint32_t nr_fields)
+static void ex_read_table(struct ex_reader *r, struct ex_table *table, struct ex_field *fields, uint32_t nr_fields)
 {
 	// NOTE: Starting in Evenicle, the rows/columns quantities are reversed
 	if (table_layout == TABLE_ROWS_FIRST) {
-		table->nr_rows = buffer_read_int32(r);
-		table->nr_columns = buffer_read_int32(r);
+		table->nr_rows = buffer_read_int32(&r->buf);
+		table->nr_columns = buffer_read_int32(&r->buf);
 	} else {
-		table->nr_columns = buffer_read_int32(r);
-		table->nr_rows = buffer_read_int32(r);
+		table->nr_columns = buffer_read_int32(&r->buf);
+		table->nr_rows = buffer_read_int32(&r->buf);
 	}
 
 	// try switching to column-major order if fields don't make sense
@@ -273,32 +289,32 @@ static void ex_read_table(struct buffer *r, struct ex_table *table, struct ex_fi
 	}
 }
 
-static void ex_read_list(struct buffer *r, struct ex_list *list)
+static void ex_read_list(struct ex_reader *r, struct ex_list *list)
 {
-	list->nr_items = buffer_read_int32(r);
+	list->nr_items = buffer_read_int32(&r->buf);
 	list->items = xcalloc(list->nr_items, sizeof(struct ex_list_item));
 	for (uint32_t i = 0; i < list->nr_items; i++) {
-		list->items[i].value.type = buffer_read_int32(r);
-		list->items[i].size = buffer_read_int32(r);
-		size_t data_loc = r->index;
+		list->items[i].value.type = buffer_read_int32(&r->buf);
+		list->items[i].size = buffer_read_int32(&r->buf);
+		size_t data_loc = r->buf.index;
 		_ex_read_value(r, &list->items[i].value, NULL, 0);
-		if (r->index - data_loc != list->items[i].size) {
+		if (r->buf.index - data_loc != list->items[i].size) {
 			EX_ERROR(r, "Incorrect size for list item: %zu / %zu",
-				 list->items[i].size, r->index - data_loc);
+				 list->items[i].size, r->buf.index - data_loc);
 		}
 	}
 }
 
-static void ex_read_tree(struct buffer *r, struct ex_tree *tree)
+static void ex_read_tree(struct ex_reader *r, struct ex_tree *tree)
 {
 	tree->name = ex_read_string(r);
-	uint32_t is_leaf = buffer_read_int32(r);
+	uint32_t is_leaf = buffer_read_int32(&r->buf);
 	if (is_leaf > 1)
 		EX_ERROR(r, "tree->is_leaf is not a boolean: %u", is_leaf);
 	tree->is_leaf = is_leaf;
 
 	if (!tree->is_leaf) {
-		tree->nr_children = buffer_read_int32(r);
+		tree->nr_children = buffer_read_int32(&r->buf);
 		tree->_children = xcalloc(tree->nr_children, sizeof(struct ex_value));
 		tree->children = xcalloc(tree->nr_children, sizeof(struct ex_tree));
 		for (uint32_t i = 0; i < tree->nr_children; i++) {
@@ -307,46 +323,46 @@ static void ex_read_tree(struct buffer *r, struct ex_tree *tree)
 			ex_read_tree(r, &tree->children[i]);
 		}
 	} else {
-		tree->leaf.value.type = buffer_read_int32(r);
-		tree->leaf.size = buffer_read_int32(r);
-		size_t data_loc = r->index;
+		tree->leaf.value.type = buffer_read_int32(&r->buf);
+		tree->leaf.size = buffer_read_int32(&r->buf);
+		size_t data_loc = r->buf.index;
 		tree->leaf.name = ex_read_string(r);
 		_ex_read_value(r, &tree->leaf.value, NULL, 0);
 
-		if (r->index - data_loc != tree->leaf.size) {
+		if (r->buf.index - data_loc != tree->leaf.size) {
 			EX_ERROR(r, "Incorrect size for leaf node: %zu / %zu",
-				 tree->leaf.size, r->index - data_loc);
+				 tree->leaf.size, r->buf.index - data_loc);
 		}
 
-		int32_t zero = buffer_read_int32(r);
+		int32_t zero = buffer_read_int32(&r->buf);
 		if (zero) {
-			EX_ERROR(r, "Expected 0 after leaf node: 0x%x at 0x%zx", zero, r->index);
+			EX_ERROR(r, "Expected 0 after leaf node: 0x%x at 0x%zx", zero, r->buf.index);
 		}
 	}
 }
 
-static void ex_read_block(struct buffer *r, struct ex_block *block)
+static void ex_read_block(struct ex_reader *r, struct ex_block *block)
 {
-	block->val.type = buffer_read_int32(r);
+	block->val.type = buffer_read_int32(&r->buf);
 	if (block->val.type < EX_INT || block->val.type > EX_TREE)
 		EX_ERROR(r, "Unknown/invalid block type: %d", block->val.type);
 
-	block->size = buffer_read_int32(r);
-	if (block->size > buffer_remaining(r))
+	block->size = buffer_read_int32(&r->buf);
+	if (block->size > buffer_remaining(&r->buf))
 		EX_ERROR(r, "Block size extends past end of file: %zu", block->size);
 
-	size_t data_loc = r->index;
+	size_t data_loc = r->buf.index;
 	block->name = ex_read_string(r);
 
 	switch (block->val.type) {
 	case EX_INT:
-		block->val.i = buffer_read_int32(r);
+		block->val.i = buffer_read_int32(&r->buf);
 		break;
 	case EX_FLOAT:
-		block->val.f = buffer_read_float(r);
+		block->val.f = buffer_read_float(&r->buf);
 		break;
 	case EX_STRING:
-		block->val.s = buffer_read_pascal_string(r);
+		block->val.s = ex_read_pascal_string(r);
 		break;
 	case EX_TABLE:
 		block->val.t = xcalloc(1, sizeof(struct ex_table));
@@ -363,9 +379,9 @@ static void ex_read_block(struct buffer *r, struct ex_block *block)
 		break;
 	}
 
-	if (r->index - data_loc != block->size) {
+	if (r->buf.index - data_loc != block->size) {
 		EX_ERROR(r, "Incorrect block size: %zu / %zu",
-			 r->index - data_loc, block->size);
+			 r->buf.index - data_loc, block->size);
 	}
 }
 
@@ -377,15 +393,18 @@ uint8_t *ex_decrypt(const char *path, size_t *size, uint32_t *nr_blocks)
 	return decoded;
 }
 
-static struct ex *_ex_read(uint8_t *data, size_t size)
+static struct ex *_ex_read(uint8_t *data, size_t size, struct string*(*conv)(const char*,size_t))
 {
 	uint32_t nr_blocks;
 	uint8_t *decoded;
-	struct buffer r;
 	struct ex *ex;
 
+	struct ex_reader r = {
+		.conv = conv,
+	};
+
 	decoded = ex_decode(data, &size, &nr_blocks);
-	buffer_init(&r, decoded, size);
+	buffer_init(&r.buf, decoded, size);
 
 	ex = xmalloc(sizeof(struct ex));
 	ex->nr_blocks = nr_blocks;
@@ -398,24 +417,34 @@ static struct ex *_ex_read(uint8_t *data, size_t size)
 	return ex;
 }
 
-struct ex *ex_read(const uint8_t *data, size_t size)
+struct ex *ex_read_conv(const uint8_t *data, size_t size, struct string*(*conv)(const char*,size_t))
 {
 	uint8_t *copy = xmalloc(size);
 	memcpy(copy, data, size);
-	struct ex *ex = _ex_read(copy, size);
+	struct ex *ex = _ex_read(copy, size, conv);
 	free(copy);
 	return ex;
 }
 
-struct ex *ex_read_file(const char *path)
+struct ex *ex_read(const uint8_t *data, size_t size)
+{
+	return ex_read_conv(data, size, make_string);
+}
+
+struct ex *ex_read_file_conv(const char *path, struct string*(*conv)(const char*,size_t))
 {
 	size_t size;
 	uint8_t *data = file_read(path, &size);
 	if (!data)
 		return NULL;
-	struct ex *ex = ex_read(data, size);
+	struct ex *ex = ex_read_conv(data, size, conv);
 	free(data);
 	return ex;
+}
+
+struct ex *ex_read_file(const char *path)
+{
+	return ex_read_file_conv(path, make_string);
 }
 
 static void ex_copy_value(struct ex_value *out, struct ex_value *in);

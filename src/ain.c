@@ -35,7 +35,6 @@
 #include "system4/instructions.h"
 #include "system4/mt19937int.h"
 #include "system4/string.h"
-#include "system4/utfsjis.h"
 
 struct func_list {
 	int nr_slots;
@@ -653,6 +652,7 @@ struct ain_reader {
 	size_t index;
 	struct ain_section *section;
 	struct ain *ain;
+	char *(*conv)(const char*);
 };
 
 static int32_t read_int32(struct ain_reader *r)
@@ -672,8 +672,9 @@ static uint8_t *read_bytes(struct ain_reader *r, size_t len)
 
 static char *read_string(struct ain_reader *r)
 {
-	char *str = strdup((char*)r->buf + r->index);
-	r->index += strlen(str) + 1;
+	char *input_str = (char*)r->buf + r->index;
+	char *str = r->conv(input_str);
+	r->index += strlen(input_str) + 1;
 	return str;
 }
 
@@ -691,10 +692,10 @@ static char **read_strings(struct ain_reader *r, int count)
 
 static struct string *read_vm_string(struct ain_reader *r)
 {
-	size_t len = strlen((char*)r->buf + r->index);
-	struct string *s = make_string((char*)r->buf + r->index, len);
+	char *cstr = read_string(r);
+	struct string *s = cstr_to_string(cstr);
 	s->cow = true;
-	r->index += len + 1;
+	free(cstr);
 	return s;
 }
 
@@ -710,15 +711,21 @@ static struct string **read_vm_strings(struct ain_reader *r, int count)
 static struct string *read_msg1_string(struct ain_reader *r)
 {
 	int32_t len = read_int32(r);
-	struct string *s = make_string((char*)r->buf + r->index, len);
-	s->cow = true;
+	char *bytes = xmalloc(len+1);
+	memcpy(bytes, r->buf + r->index, len);
+	bytes[len] = '\0';
 	r->index += len;
 
 	// why...
 	for (int i = 0; i < len; i++) {
-		s->text[i] -= (uint8_t)i;
-		s->text[i] -= 0x60;
+		bytes[i] -= (uint8_t)i;
+		bytes[i] -= 0x60;
 	}
+
+	char *str = r->conv(bytes);
+	struct string *s = cstr_to_string(str);
+	free(str);
+	free(bytes);
 
 	return s;
 }
@@ -1302,7 +1309,7 @@ err:
 	return NULL;
 }
 
-struct ain *ain_open(const char *path, int *error)
+struct ain *ain_open_conv(const char *path, char*(*conv)(const char*), int *error)
 {
 	long len;
 	struct ain *ain = NULL;
@@ -1317,7 +1324,8 @@ struct ain *ain_open(const char *path, int *error)
 		.buf = buf,
 		.index = 0,
 		.size = len,
-		.ain = ain
+		.ain = ain,
+		.conv = conv,
 	};
 	ain->version = -1;
 	while (read_tag(&r, ain));
@@ -1334,6 +1342,11 @@ err:
 	free(buf);
 	free(ain);
 	return NULL;
+}
+
+struct ain *ain_open(const char *path, int *error)
+{
+	return ain_open_conv(path, strdup, error);
 }
 
 struct ain *ain_new(int major_version, int minor_version)
