@@ -52,6 +52,8 @@
 #include "system4/buffer.h"
 #include "system4/string.h"
 
+typedef struct string *(*string_conv_fun)(const char*,size_t);
+
 static struct {
 	uint32_t state[521];
 	int current;
@@ -292,7 +294,7 @@ static char *afa3_decrypt_string(uint16_t *chars, size_t size)
 /*
  * Read the metadata for a single file.
  */
-static bool afa3_read_entry(struct bitstream *bs, struct afa_entry *entry, int *error)
+static bool afa3_read_entry(struct bitstream *bs, struct afa_entry *entry, int *error, string_conv_fun conv)
 {
 	size_t size;
 	uint16_t *chars = NULL;
@@ -310,7 +312,7 @@ static bool afa3_read_entry(struct bitstream *bs, struct afa_entry *entry, int *
 		goto err;
 	}
 
-	entry->name = make_string(name, strlen(name));
+	entry->name = conv(name, strlen(name));
 	entry->unknown0 = bs_read_int32(bs);
 	entry->unknown1 = bs_read_int32(bs);
 	entry->off = bs_read_int32(bs);
@@ -327,7 +329,7 @@ err:
 /*
  * Read the archive metadata.
  */
-bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error)
+bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error, string_conv_fun conv)
 {
 	uint8_t *packed = NULL;
 	uint8_t *unpacked = NULL;
@@ -360,7 +362,7 @@ bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error)
 	for (unsigned i = 0; i < ar->nr_files; i++) {
 		if (bs_read_bits(&bs, 2) == -1)
 			break;
-		if (!afa3_read_entry(&bs, &ar->files[i], error)) {
+		if (!afa3_read_entry(&bs, &ar->files[i], error, conv)) {
 			free(ar->files);
 			goto err;
 		}

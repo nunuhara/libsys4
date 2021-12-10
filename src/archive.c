@@ -14,13 +14,15 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
+#include <string.h>
 #include "system4.h"
 #include "system4/ald.h"
 
 static const char *errtab[ARCHIVE_MAX_ERROR] = {
 	[ARCHIVE_SUCCESS]           = "Success",
-	[ARCHIVE_FILE_ERROR]        = "Error opening ALD file",
-	[ARCHIVE_BAD_ARCHIVE_ERROR] = "Invalid ALD file"
+	[ARCHIVE_FILE_ERROR]        = "Error opening archive",
+	[ARCHIVE_BAD_ARCHIVE_ERROR] = "Invalid archive"
 };
 
 /* Get a message describing an error. */
@@ -29,4 +31,31 @@ const char *archive_strerror(int error)
 	if (error < ARCHIVE_MAX_ERROR)
 		return errtab[error];
 	return "Invalid error number";
+}
+
+void _archive_release_file(struct archive_data *data)
+{
+	if (!data->archive->mmapped)
+		free(data->data);
+	data->data = NULL;
+}
+
+/*
+ * Default implementation for `archive_copy_descriptor`.
+ * If the archive implementation extends the `archive_data` structure,
+ * this must be overridden.
+ */
+void _archive_copy_descriptor_ip(struct archive_data *dst, struct archive_data *src)
+{
+	*dst = *src;
+	dst->data = NULL;
+	dst->name = strdup(dst->name);
+}
+
+
+struct archive_data *_archive_copy_descriptor(struct archive_data *src)
+{
+	struct archive_data *dst = xmalloc(sizeof(struct archive_data));
+	_archive_copy_descriptor_ip(dst, src);
+	return dst;
 }

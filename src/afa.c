@@ -29,6 +29,8 @@
 #include "system4/buffer.h"
 #include "system4/string.h"
 
+typedef struct string *(*string_conv_fun)(const char*,size_t);
+
 static bool afa_exists(struct archive *ar, int no);
 static struct archive_data *afa_get(struct archive *ar, int no);
 static struct archive_data *afa_get_by_name(struct archive *ar, const char *name);
@@ -42,6 +44,8 @@ struct archive_ops afa_archive_ops = {
 	.get = afa_get,
 	.get_by_name = afa_get_by_name,
 	.load_file = afa_load_file,
+	.release_file = NULL,
+	.copy_descriptor = NULL,
 	.for_each = afa_for_each,
 	.free_data = afa_free_data,
 	.free = afa_free,
@@ -87,7 +91,7 @@ static struct archive_data *afa_get_descriptor(struct archive *_ar, int no)
 	struct afa_entry *e = &ar->files[no];
 	struct archive_data *data = xcalloc(1, sizeof(struct archive_data));
 	data->size = e->size;
-	data->name = e->name->text;
+	data->name = strdup(e->name->text);
 	data->no = no;
 	data->archive = _ar;
 	return data;
@@ -133,6 +137,7 @@ static void afa_free_data(struct archive_data *data)
 {
 	if (data->data && !data->archive->mmapped)
 		free(data->data);
+	free(data->name);
 	free(data);
 }
 
@@ -150,10 +155,14 @@ static void afa_free(struct archive *_ar)
 }
 
 static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa_entry *entry,
-			   possibly_unused int *error)
+			   int *error, string_conv_fun conv)
 {
 	uint32_t name_len = buffer_read_int32(in);
-	entry->name = buffer_read_pascal_string(in); // NOTE: length is padded
+	entry->name = buffer_conv_pascal_string(in, conv); // NOTE: length is padded
+	if (!entry->name) {
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
 	entry->name->size = name_len; // fix length
 
 	entry->unknown0 = buffer_read_int32(in);
@@ -166,7 +175,7 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	return true;
 }
 
-static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error)
+static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, string_conv_fun conv)
 {
 	uint8_t *buf = xmalloc(ar->compressed_size);
 	uint8_t *table = xmalloc(ar->uncompressed_size);
@@ -186,7 +195,7 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error)
 	buffer_init(&r, table, ar->uncompressed_size);
 	ar->files = xcalloc(ar->nr_files, sizeof(struct afa_entry));
 	for (uint32_t i = 0; i < ar->nr_files; i++) {
-		if (!afa_read_entry(&r, ar, &ar->files[i], error)) {
+		if (!afa_read_entry(&r, ar, &ar->files[i], error, conv)) {
 			free(ar->files);
 			goto exit_err;
 		}
@@ -201,9 +210,9 @@ exit_err:
 	return false;
 }
 
-bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error);
+bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error, string_conv_fun conv);
 
-static bool afa_read_metadata(FILE *f, struct afa_archive *ar, int *error)
+static bool afa_read_metadata(FILE *f, struct afa_archive *ar, int *error, string_conv_fun conv)
 {
 	char buf[44];
 	if (fread(buf, 44, 1, f) != 1) {
@@ -222,7 +231,7 @@ static bool afa_read_metadata(FILE *f, struct afa_archive *ar, int *error)
 
 	if (strncmp(buf+8, "AlicArch", 8)) {
 		if (LittleEndian_getDW((uint8_t*)buf, 8) == 3) {
-			return afa3_read_metadata(buf, f, ar, error);
+			return afa3_read_metadata(buf, f, ar, error, conv);
 		}
 		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
 		return false;
@@ -264,10 +273,11 @@ static bool afa_read_metadata(FILE *f, struct afa_archive *ar, int *error)
 		return false;
 	}
 
-	return afa_read_file_table(f, ar, error);
+	return afa_read_file_table(f, ar, error, conv);
 }
 
-struct afa_archive *afa_open(const char *file, int flags, int *error)
+struct afa_archive *afa_open_conv(const char *file, int flags, int *error,
+				  struct string *(*conv)(const char*,size_t))
 {
 #ifdef _WIN32
 	flags &= ~ARCHIVE_MMAP;
@@ -280,7 +290,7 @@ struct afa_archive *afa_open(const char *file, int flags, int *error)
 		*error = ARCHIVE_FILE_ERROR;
 		goto exit_err;
 	}
-	if (!afa_read_metadata(fp, ar, error)) {
+	if (!afa_read_metadata(fp, ar, error, conv)) {
 		WARNING("afa_read_metadata failed");
 		fclose(fp);
 		goto exit_err;
@@ -315,4 +325,9 @@ struct afa_archive *afa_open(const char *file, int flags, int *error)
 exit_err:
 	free(ar);
 	return NULL;
+}
+
+struct afa_archive *afa_open(const char *file, int flags, int *error)
+{
+	return afa_open_conv(file, flags, error, make_string);
 }

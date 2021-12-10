@@ -51,5 +51,7 @@ struct afa_archive {
 };
 
 struct afa_archive *afa_open(const char *file, int flags, int *error);
+struct afa_archive *afa_open_conv(const char *file, int flags, int *error,
+				  struct string *(*conv)(const char*,size_t));
 
 #endif /* SYSTEM4_AFA_H */

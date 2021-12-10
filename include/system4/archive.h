@@ -42,7 +42,9 @@ struct archive_ops {
 	bool (*exists_by_name)(struct archive *ar, const char *name);
 	struct archive_data *(*get)(struct archive *ar, int no);
 	struct archive_data *(*get_by_name)(struct archive *ar, const char *name);
-	bool (*load_file)(struct archive_data *data);
+	bool (*load_file)(struct archive_data *file);
+	void (*release_file)(struct archive_data *file);
+	struct archive_data *(*copy_descriptor)(struct archive_data *src);
 	void (*for_each)(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
 	void (*free_data)(struct archive_data *data);
 	void (*free)(struct archive *ar);
@@ -53,7 +55,6 @@ struct archive_data {
 	uint8_t *data;
 	char *name;
 	int no;
-	void *private;
 	struct archive *archive;
 };
 
@@ -92,7 +93,7 @@ static inline struct archive_data *archive_get_by_name(struct archive *ar, const
 }
 
 /*
- * Load a file into memory, given an uninitialized descriptor.
+ * Load a file into memory, given an unloaded descriptor.
  * This should be used in conjunction with archive_for_each.
  */
 static inline bool archive_load_file(struct archive_data *data)
@@ -100,6 +101,38 @@ static inline bool archive_load_file(struct archive_data *data)
 	return data->archive->ops->load_file ? data->archive->ops->load_file(data) : false;
 }
 
+/*
+ * Release file data loaded with `archive_load_file`.
+ */
+void _archive_release_file(struct archive_data *data);
+static inline void archive_release_file(struct archive_data *data)
+{
+	if (data->archive->ops->release_file)
+		data->archive->ops->release_file(data);
+	else
+		_archive_release_file(data);
+}
+
+/*
+ * Copy a descriptor. This should be used in conjunction with `archive_for_each`
+ * when descriptors will escape the iterator. A descriptor copied with this
+ * function is initially unloaded, even if the source descriptor was loaded.
+ */
+struct archive_data *_archive_copy_descriptor(struct archive_data *src);
+void _archive_copy_descriptor_ip(struct archive_data *dst, struct archive_data *src);
+static inline struct archive_data *archive_copy_descriptor(struct archive_data *src)
+{
+	if (src->archive->ops->copy_descriptor)
+		return src->archive->ops->copy_descriptor(src);
+	return _archive_copy_descriptor(src);
+}
+
+/*
+ * Iterate over all descriptors in the archive. Descriptors passed to `iter` are
+ * initially unloaded, and should be loaded with `archive_load_file`.
+ * Descriptors are closed after `iter` returns. If descriptors should escape the
+ * scope of the iterator, they can be copied with `archive_copy_descriptor`.
+ */
 static inline void archive_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user)
 {
 	if (ar->ops->for_each)
@@ -121,5 +154,7 @@ static inline void archive_free(struct archive *ar)
 {
 	ar->ops->free(ar);
 }
+
+struct archive_data *_archive_make_descriptor(struct archive *ar, char *name, int no, size_t size);
 
 #endif /* SYSTEM4_ARCHIVE_H */

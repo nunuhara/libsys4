@@ -32,6 +32,7 @@ static bool ald_exists(struct archive *ar, int no);
 static struct archive_data *ald_get(struct archive *ar, int no);
 static struct archive_data *ald_get_by_name(struct archive *_ar, const char *name);
 static bool ald_load_file(struct archive_data *data);
+static struct archive_data *ald_copy_descriptor(struct archive_data *src);
 static void ald_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user);
 static void ald_free_data(struct archive_data *data);
 static void ald_free(struct archive *ar);
@@ -41,6 +42,8 @@ struct archive_ops ald_archive_ops = {
 	.get = ald_get,
 	.get_by_name = ald_get_by_name,
 	.load_file = ald_load_file,
+	.release_file = NULL,
+	.copy_descriptor = ald_copy_descriptor,
 	.for_each = ald_for_each,
 	.free_data = ald_free_data,
 	.free = ald_free,
@@ -280,6 +283,17 @@ static bool ald_load_file(struct archive_data *data)
 		fread(data->data, data->size, 1, fp);
 	}
 	return data;
+}
+
+static struct archive_data *ald_copy_descriptor(struct archive_data *_src)
+{
+	struct ald_archive_data *src = (struct ald_archive_data*)_src;
+	struct ald_archive_data *dst = xmalloc(sizeof(struct ald_archive_data));
+	_archive_copy_descriptor_ip(&dst->data, &src->data);
+	dst->disk = src->disk;
+	dst->dataptr = src->dataptr;
+	dst->hdr_size = src->hdr_size;
+	return &dst->data;
 }
 
 static void ald_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user)

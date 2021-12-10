@@ -70,6 +70,16 @@ struct string *buffer_read_pascal_string(struct buffer *r)
 	return s;
 }
 
+struct string *buffer_conv_pascal_string(struct buffer *buf, struct string *(*conv)(const char*,size_t))
+{
+	int32_t len = buffer_read_int32(buf);
+	if (len < 0)
+		return NULL;
+	struct string *s = conv(buffer_strdata(buf), len);
+	buffer_skip(buf, len);
+	return s;
+}
+
 void buffer_read_bytes(struct buffer *r, uint8_t *dst, size_t n)
 {
 	if (buffer_remaining(r) < n)
