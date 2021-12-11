@@ -58,7 +58,7 @@ struct flat_data {
 	size_t off;
 	size_t size;
 	enum flat_data_type type;
-	bool allocated;
+	bool inflated;
 };
 
 struct flat_section {

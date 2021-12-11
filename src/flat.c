@@ -46,7 +46,7 @@ static const char *get_file_extension(int type, const char *data)
 static void flat_free_data(struct archive_data *data)
 {
 	struct flat_data *flat = (struct flat_data*)data;
-	if (flat->allocated)
+	if (flat->inflated)
 		free(data->data);
 	free(data->name);
 	free(data);
@@ -104,11 +104,14 @@ static struct archive_data *flat_get(struct archive *_ar, int no)
 	return &data->super;
 }
 
-// FIXME: this should assume data->data is NULL and initialize it.
 static bool flat_load_file(possibly_unused struct archive_data *data)
 {
 	struct flat_archive *ar = (struct flat_archive*)data->archive;
 	struct flat_data *flatdata = (struct flat_data*)data;
+
+	if (!data->data) {
+		data->data = ar->data + flatdata->off;
+	}
 
 	// inflate zlib compressed data
 	if (flatdata->type == FLAT_ZLIB && ar->data[flatdata->off+4] == 0x78) {
@@ -121,7 +124,7 @@ static bool flat_load_file(possibly_unused struct archive_data *data)
 		}
 		data->data = out;
 		data->size = size;
-		flatdata->allocated = true;
+		flatdata->inflated = true;
 	}
 
 	return true;
@@ -131,25 +134,23 @@ static void flat_release_file(possibly_unused struct archive_data *data)
 {
 	struct flat_archive *ar = (struct flat_archive*)data->archive;
 	struct flat_data *flatdata = (struct flat_data*)data;
-	if (flatdata->allocated) {
+	if (flatdata->inflated) {
 		free(data->data);
 		data->data = ar->data + flatdata->off;
 		data->size = flatdata->size;
+		flatdata->inflated = false;
 	}
 }
 
 static struct archive_data *flat_copy_descriptor(struct archive_data *_src)
 {
-	struct flat_archive *ar = (struct flat_archive*)_src->archive;
-	struct flat_data *src = (struct flat_data*)src;
+	struct flat_data *src = (struct flat_data*)_src;
 	struct flat_data *dst = xmalloc(sizeof(struct flat_data));
 	_archive_copy_descriptor_ip(&dst->super, &src->super);
-	// XXX: flat_load_file assumes `data` is already initialized, so we need to initialize it here
-	dst->super.data = ar->data + src->off;
 	dst->off = src->off;
 	dst->size = src->size;
 	dst->type = src->type;
-	dst->allocated = false;
+	dst->inflated = false;
 	return &dst->super;
 }
 
