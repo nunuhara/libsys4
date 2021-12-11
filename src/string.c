@@ -218,6 +218,7 @@ void string_push_back(struct string **_s, int c)
 	if (bytes == 2) {
 		s->text[s_size+1] = c >> 8;
 	}
+	*_s = s;
 }
 
 void string_pop_back(struct string **s)
