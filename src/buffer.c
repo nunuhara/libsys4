@@ -75,6 +75,8 @@ struct string *buffer_conv_pascal_string(struct buffer *buf, struct string *(*co
 	int32_t len = buffer_read_int32(buf);
 	if (len < 0)
 		return NULL;
+	if (len == 0)
+		return string_dup(&EMPTY_STRING);
 	struct string *s = conv(buffer_strdata(buf), len);
 	buffer_skip(buf, len);
 	return s;

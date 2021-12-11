@@ -57,11 +57,9 @@ uint8_t ex_decode_table_inv[256];
 
 static struct string *ex_read_pascal_string(struct ex_reader *r)
 {
-	int32_t len = buffer_read_int32(&r->buf);
-	if (len < 0)
-		EX_ERROR(r, "Invalid string length: %d", len);
-	struct string *s = r->conv(buffer_strdata(&r->buf), len);
-	buffer_skip(&r->buf, len);
+	struct string *s = buffer_conv_pascal_string(&r->buf, r->conv);
+	if (!s)
+		EX_ERROR(r, "Failed to read string");
 	return s;
 }
 
