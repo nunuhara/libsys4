@@ -95,10 +95,12 @@ static struct archive_data *flat_get(struct archive *_ar, int no)
 		return NULL;
 	}
 
+	const char *section = (unsigned)no < ar->nr_libl_entries ? "LIBL" : "TALT";
+
 	data->super.data = ar->data + data->off;
 	data->super.size = data->size;
 	data->super.name = xmalloc(256);
-	snprintf(data->super.name, 256, "%d%s", no, get_file_extension(data->type, (const char*)ar->data+data->off));
+	snprintf(data->super.name, 256, "%s_%d%s", section, no, get_file_extension(data->type, (const char*)ar->data+data->off));
 	data->super.no = no;
 	data->super.archive = _ar;
 	return &data->super;
