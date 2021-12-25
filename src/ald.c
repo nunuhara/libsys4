@@ -212,7 +212,7 @@ struct archive_data *ald_get_descriptor(struct archive *_ar, int no)
 		uint8_t *hdr  = ar->files[dfile->disk].data + dfile->dataptr;
 		dfile->hdr_size = LittleEndian_getDW(hdr, 0);
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
-		dfile->data.name = strdup((char*)hdr + 16);
+		dfile->data.name = ar->conv((char*)hdr + 16);
 	} else {
 		uint8_t *hdr = xmalloc(16);
 		FILE *fp = ar->files[dfile->disk].fp;
@@ -341,12 +341,13 @@ static void ald_free(struct archive *_ar)
 }
 
 /* Open an ALD archive, optionally memory-mapping it. */
-struct archive *ald_open(char **files, int count, int flags, int *error)
+struct archive *ald_open_conv(char **files, int count, int flags, int *error, char*(*conv)(const char*))
 {
 	FILE *fp;
 	long filesize;
-	struct ald_archive *ar = calloc(1, sizeof(struct ald_archive));
 	bool gotmap = false;
+	struct ald_archive *ar = calloc(1, sizeof(struct ald_archive));
+	ar->conv = conv;
 
 #ifdef _WIN32
 	flags &= ~ARCHIVE_MMAP;
@@ -414,3 +415,7 @@ exit_err:
 	return NULL;
 }
 
+struct archive *ald_open(char **files, int count, int flags, int *error)
+{
+	return ald_open_conv(files, count, flags, error, strdup);
+}

@@ -47,6 +47,8 @@ struct ald_archive {
 	short *map_ptr;
 	// pointer maps
 	int *fileptr[ALD_FILEMAX];
+	// filename conv function
+	char *(*conv)(const char*);
 };
 
 struct ald_archive_data {
@@ -68,5 +70,6 @@ enum {
  * Open an ALD archive.
  */
 struct archive *ald_open(char **files, int count, int flags, int *error);
+struct archive *ald_open_conv(char **files, int count, int flags, int *error, char*(*conv)(const char*));
 
 #endif /* SYSTEM4_ALD_H */
