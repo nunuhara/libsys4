@@ -1,5 +1,5 @@
 project('libsys4', 'c',
-        default_options : ['c_std=c11'])
+        default_options : ['c_std=c11', 'default_library=static'])
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 
 zlib = dependency('zlib')
@@ -56,9 +56,10 @@ system4 = ['src/acx.c',
 system4 += flexgen.process('src/ini_lexer.l')
 system4 += bisongen.process('src/ini_parser.y')
 
-libsys4 = static_library('sys4', system4,
-                         dependencies : [libm, zlib, tj, webp, png],
-                         include_directories : [inc, local_inc])
+libsys4 = library('sys4', system4,
+                  dependencies : [libm, zlib, tj, webp, png],
+                  include_directories : [inc, local_inc],
+                  install : true)
 
 libsys4_dep = declare_dependency(include_directories : inc,
                                  link_with : libsys4)
