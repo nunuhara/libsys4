@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "system4.h"
+#include "system4/ain.h"
 #include "system4/instructions.h"
 
 #define SYS(syscode, sysname, rt, nargs, ...)	\
