@@ -21,6 +21,7 @@
 #include "system4.h"
 #include "system4/ald.h"
 #include "system4/cg.h"
+#include "system4/file.h"
 #include "system4/webp.h"
 
 #include "little_endian.h"
@@ -122,7 +123,7 @@ void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 {
 	size_t len;
 	uint8_t *output;
-	FILE *f = fopen(path, "wb");
+	FILE *f = file_open_utf8(path, "wb");
 	if (!f)
 		ERROR("fopen failed: %s", strerror(errno));
 	if (alpha) {

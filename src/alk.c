@@ -25,6 +25,7 @@
 #include "system4.h"
 #include "system4/archive.h"
 #include "system4/alk.h"
+#include "system4/file.h"
 
 static bool alk_exists(struct archive *ar, int no);
 static struct archive_data *alk_get(struct archive *ar, int no);
@@ -175,7 +176,7 @@ struct alk_archive *alk_open(const char *file, int flags, int *error)
 	FILE *fp;
 	struct alk_archive *ar = xcalloc(1, sizeof(struct alk_archive));
 
-	if (!(fp = fopen(file, "rb"))) {
+	if (!(fp = file_open_utf8(file, "rb"))) {
 		WARNING("fopen failed: %s", strerror(errno));
 		*error = ARCHIVE_FILE_ERROR;
 		goto exit_err;

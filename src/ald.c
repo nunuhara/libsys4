@@ -27,6 +27,7 @@
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/ald.h"
+#include "system4/file.h"
 
 static bool ald_exists(struct archive *ar, int no);
 static struct archive_data *ald_get(struct archive *ar, int no);
@@ -355,7 +356,7 @@ struct archive *ald_open(char **files, int count, int flags, int *error)
 	for (int i = 0; i < count; i++) {
 		if (!files[i])
 			continue;
-		if (!(fp = fopen(files[i], "rb"))) {
+		if (!(fp = file_open_utf8(files[i], "rb"))) {
 			*error = ARCHIVE_FILE_ERROR;
 			goto exit_err;
 		}
@@ -393,7 +394,7 @@ struct archive *ald_open(char **files, int count, int flags, int *error)
 			ar->files[i].size = filesize;
 		} else {
 			// get a file descriptor for each file
-			if (!(ar->files[i].fp = fopen(files[i], "rb"))) {
+			if (!(ar->files[i].fp = file_open_utf8(files[i], "rb"))) {
 				*error = ARCHIVE_FILE_ERROR;
 				goto exit_err;
 			}

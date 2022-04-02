@@ -27,6 +27,7 @@
 #include "system4/afa.h"
 #include "system4/archive.h"
 #include "system4/buffer.h"
+#include "system4/file.h"
 #include "system4/string.h"
 
 typedef struct string *(*string_conv_fun)(const char*,size_t);
@@ -285,7 +286,7 @@ struct afa_archive *afa_open_conv(const char *file, int flags, int *error,
 	FILE *fp;
 	struct afa_archive *ar = xcalloc(1, sizeof(struct afa_archive));
 
-	if (!(fp = fopen(file, "rb"))) {
+	if (!(fp = file_open_utf8(file, "rb"))) {
 		WARNING("fopen failed: %s", strerror(errno));
 		*error = ARCHIVE_FILE_ERROR;
 		goto exit_err;
