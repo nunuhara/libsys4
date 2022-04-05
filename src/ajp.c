@@ -70,8 +70,7 @@ static void ajp_init_metrics(struct ajp_header *ajp, struct cg_metrics *dst)
 	dst->h = ajp->height;
 	dst->bpp = 24;
 	dst->has_pixel = ajp->jpeg_size > 0;
-	//dst->has_alpha = ajp->mask_size > 0;
-	dst->has_alpha = false;
+	dst->has_alpha = ajp->mask_size > 0;
 	dst->pixel_pitch = ajp->width * 3;
 	dst->alpha_pitch = 1;
 }
