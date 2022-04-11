@@ -117,6 +117,7 @@ void cg_free(struct cg *cg)
 	if (!cg)
 		return;
 	free(cg->pixels);
+	free(cg->pal);
 	free(cg);
 }
 
