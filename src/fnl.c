@@ -123,6 +123,22 @@ struct fnl_font_size *fnl_get_font_size(struct fnl_font *font, float size)
 	return closest;
 }
 
+struct fnl_font_size *fnl_get_font_size_round_down(struct fnl_font *font, float size)
+{
+	float min_diff = 9999;
+	struct fnl_font_size *closest = &font->sizes[0];
+	for (unsigned i = 0; i < font->nr_sizes; i++) {
+		if (font->sizes[i].size > size)
+			continue;
+		float diff = fabsf(font->sizes[i].size - size);
+		if (diff < min_diff) {
+			min_diff = diff;
+			closest = &font->sizes[i];
+		}
+	}
+	return closest;
+}
+
 static void fnl_read_glyph(struct buffer *r, uint32_t height, struct fnl_glyph *dst)
 {
 	dst->height = height;
@@ -231,6 +247,7 @@ void fnl_free(struct fnl *fnl)
 			free(fnl->fonts[font].faces[face].glyphs);
 		}
 		free(fnl->fonts[font].faces);
+		free(fnl->fonts[font].sizes);
 	}
 	free(fnl->fonts);
 	free(fnl->data);

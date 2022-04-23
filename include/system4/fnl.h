@@ -66,5 +66,6 @@ void fnl_free(struct fnl *fnl);
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code);
 uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *size);
 struct fnl_font_size *fnl_get_font_size(struct fnl_font *font, float size);
+struct fnl_font_size *fnl_get_font_size_round_down(struct fnl_font *font, float size);
 
 #endif /* SYSTEM4_FNL_H */
