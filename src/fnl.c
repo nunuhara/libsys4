@@ -106,6 +106,96 @@ struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code)
 	return &font->glyphs[index];
 }
 
+static struct fnl_rendered_glyph *render_glyph_fullsize(struct fnl_font_face *face,
+		struct fnl_glyph *glyph)
+{
+	// decompress glyph bitmap
+	unsigned long data_size;
+	uint8_t *data = fnl_glyph_data(face->font->fnl, glyph, &data_size);
+
+	const int glyph_w = (data_size*8) / face->height;
+	const int glyph_h = face->height;
+
+	struct fnl_rendered_glyph *out = xmalloc(sizeof(struct fnl_rendered_glyph));
+	out->width = glyph_w;
+	out->height = glyph_h;
+	out->advance = glyph->real_width;
+	out->pixels = xmalloc(glyph_w * glyph_h);
+	out->data = NULL;
+
+	// expand 1-bit bitmap to 8-bit
+	for (unsigned i = 0; i < glyph_w * glyph_h; i++) {
+		unsigned row = (glyph_h - 1) - i / glyph_w;
+		unsigned col = i % glyph_w;
+		bool on = data[i/8] & (1 << (7 - i % 8));
+		out->pixels[row*glyph_w + col] = on ? 255 : 0;
+	}
+
+	free(data);
+	return out;
+}
+
+static struct fnl_rendered_glyph *render_glyph_downscaled(struct fnl_rendered_glyph *fullsize,
+		unsigned denominator)
+{
+	struct fnl_rendered_glyph *out = xmalloc(sizeof(struct fnl_rendered_glyph));
+	out->width = fullsize->width / denominator;
+	out->height = fullsize->height / denominator;
+	out->advance = fullsize->advance / denominator;
+	out->pixels = xmalloc(out->width * out->height);
+	out->data = NULL;
+
+	unsigned *acc = xcalloc(out->width * out->height, sizeof(unsigned));
+
+	// sample each pixel in `denominator`-sized blocks and compute the average
+	// TODO: no need to sample every single pixel; 4 should be fine?
+	const unsigned span = out->width;
+	const unsigned size = span * out->height;
+	for (unsigned i = 0; i < size; i++) {
+		unsigned dst_row = i / span;
+		unsigned dst_col = i % span;
+		for (unsigned r = 0; r < denominator; r++) {
+			unsigned src_row = dst_row * denominator + r;
+			for (unsigned c = 0; c < denominator; c++) {
+				unsigned src_col = dst_col * denominator + c;
+				acc[i] += fullsize->pixels[src_row*fullsize->width + src_col];
+			}
+		}
+		out->pixels[i] = acc[i] / (denominator * denominator);
+	}
+
+	free(acc);
+	return out;
+}
+
+struct fnl_rendered_glyph *fnl_render_glyph(struct fnl_font_size *size, uint16_t code)
+{
+	unsigned int index = sjis_code_to_index(code);
+
+	if (index >= size->face->nr_glyphs)
+		return NULL;
+	if (size->cache && size->cache[index])
+		return size->cache[index];
+	if (!size->face->glyphs[index].data_pos)
+		return NULL;
+
+	if (!size->cache) {
+		size->cache = xcalloc(size->face->nr_glyphs, sizeof(struct fnl_rendered_glyph*));
+	}
+
+	// render glyph at full size
+	if (size->denominator == 1) {
+		size->cache[index] = render_glyph_fullsize(size->face, &size->face->glyphs[index]);
+	}
+	// render downscaled glyph
+	else {
+		struct fnl_rendered_glyph *full = fnl_render_glyph(size->fullsize, code);
+		size->cache[index] = render_glyph_downscaled(full, size->denominator);
+	}
+
+	return size->cache[index];
+}
+
 /*
  * Get the closest font size.
  */
@@ -179,8 +269,9 @@ static void fnl_read_font_face(struct buffer *r, struct fnl_font_face *dst)
 		fnl_read_glyph(r, dst->height, &dst->glyphs[i]);
 	}
 
-	for (unsigned i = 0; i < 11; i++) {
-		dst->_sizes[i] = dst->height / (float)(i+2);
+	dst->_sizes[0] = dst->height;
+	for (unsigned i = 1; i < 12; i++) {
+		dst->_sizes[i] = dst->height / (float)(i+1);
 	}
 }
 
@@ -194,14 +285,16 @@ static void fnl_read_font(struct buffer *r, struct fnl_font *dst)
 		fnl_read_font_face(r, &dst->faces[i]);
 	}
 
-	dst->nr_sizes = dst->nr_faces * 11;
+	dst->nr_sizes = dst->nr_faces * 12;
 	dst->sizes = xcalloc(dst->nr_sizes, sizeof(struct fnl_font_size));
 	for (unsigned face = 0, s = 0; face < dst->nr_faces; face++) {
-		for (unsigned i = 0; i < 11; i++) {
+		unsigned fullsize = s;
+		for (unsigned i = 0; i < 12; i++) {
 			dst->sizes[s++] = (struct fnl_font_size) {
-				.face = face,
+				.face = &dst->faces[face],
+				.fullsize = &dst->sizes[fullsize],
 				.size = dst->faces[face]._sizes[i],
-				.denominator = i+2
+				.denominator = i+1
 			};
 		}
 	}
@@ -240,14 +333,36 @@ err:
 	return NULL;
 }
 
-void fnl_free(struct fnl *fnl)
+static void free_cache(struct fnl_rendered_glyph **cache, unsigned cache_size, void(*free_data)(void*))
 {
-	for (size_t font = 0; font < fnl->nr_fonts; font++) {
-		for (size_t face = 0; face < fnl->fonts[font].nr_faces; face++) {
-			free(fnl->fonts[font].faces[face].glyphs);
+	if (!cache)
+		return;
+	for (unsigned i = 0; i < cache_size; i++) {
+		if (!cache[i])
+			continue;
+		if (cache[i]->data && free_data)
+			free_data(cache[i]->data);
+		free(cache[i]->pixels);
+		free(cache[i]);
+	}
+	free(cache);
+}
+
+void fnl_free(struct fnl *fnl, void(*free_data)(void*))
+{
+	for (size_t font_i = 0; font_i < fnl->nr_fonts; font_i++) {
+		struct fnl_font *font = &fnl->fonts[font_i];
+		for (unsigned size_i = 0; size_i < font->nr_sizes; size_i++) {
+			struct fnl_font_size *size = &font->sizes[size_i];
+			free_cache(size->cache, size->face->nr_glyphs, free_data);
 		}
-		free(fnl->fonts[font].faces);
-		free(fnl->fonts[font].sizes);
+		free(font->sizes);
+
+		for (size_t face = 0; face < font->nr_faces; face++) {
+			free(font->faces[face].glyphs);
+		}
+		free(font->faces);
+
 	}
 	free(fnl->fonts);
 	free(fnl->data);

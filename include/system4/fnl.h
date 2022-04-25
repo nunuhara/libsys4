@@ -38,10 +38,20 @@ struct fnl_font {
 	struct fnl_font_size *sizes;
 };
 
+struct fnl_rendered_glyph {
+	uint16_t width;
+	uint16_t height;
+	float advance;
+	uint8_t *pixels;
+	void *data;
+};
+
 struct fnl_font_size {
-	unsigned face;
+	struct fnl_font_face *face;
+	struct fnl_font_size *fullsize;
 	float size;
 	unsigned denominator;
+	struct fnl_rendered_glyph **cache;
 };
 
 struct fnl_font_face {
@@ -50,7 +60,7 @@ struct fnl_font_face {
 	uint32_t uk;
 	uint32_t nr_glyphs;
 	struct fnl_glyph *glyphs;
-	float _sizes[11];
+	float _sizes[12];
 };
 
 struct fnl_glyph {
@@ -61,9 +71,10 @@ struct fnl_glyph {
 };
 
 struct fnl *fnl_open(const char *path);
-void fnl_free(struct fnl *fnl);
+void fnl_free(struct fnl *fnl, void(*free_data)(void*));
 
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code);
+struct fnl_rendered_glyph *fnl_render_glyph(struct fnl_font_size *size, uint16_t code);
 uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *size);
 struct fnl_font_size *fnl_get_font_size(struct fnl_font *font, float size);
 struct fnl_font_size *fnl_get_font_size_round_down(struct fnl_font *font, float size);
