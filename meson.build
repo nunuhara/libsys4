@@ -23,7 +23,8 @@ inc = include_directories('include')
 local_inc = include_directories('src')
 
 # sources for libsys4.a
-system4 = ['src/acx.c',
+system4 = ['src/aar.c',
+           'src/acx.c',
            'src/afa.c',
            'src/afa3.c',
            'src/ain.c',
