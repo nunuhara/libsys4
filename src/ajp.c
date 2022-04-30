@@ -18,11 +18,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <turbojpeg.h>
+#include <webp/decode.h>
 #include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/cg.h"
 #include "system4/pms.h"
+#include "system4/webp.h"
 
 bool ajp_checkfmt(const uint8_t *data)
 {
@@ -75,6 +77,65 @@ static void ajp_init_metrics(struct ajp_header *ajp, struct cg_metrics *dst)
 	dst->alpha_pitch = 1;
 }
 
+static uint8_t *read_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header *ajp)
+{
+	if (ajp->mask_size && pms8_checkfmt(mask_data)) {
+		return pms_extract_mask(mask_data, ajp->mask_size);
+	} else if (ajp->mask_size && webp_checkfmt(mask_data)) {
+		int w, h;
+		uint8_t *tmp = WebPDecodeRGBA(mask_data, ajp->mask_size, &w, &h);
+		if (w != ajp->width || h != ajp->height) {
+			WARNING("Unexpected AJP mask size");
+			WebPFree(tmp);
+			return NULL;
+		}
+		// discard pixel data
+		uint8_t *mask = xmalloc(ajp->width * ajp->height);
+		for (int i = 0; i < ajp->width * ajp->height; i++) {
+			mask[i] = tmp[i*4+3];
+		}
+		WebPFree(tmp);
+		return mask;
+	} else if (mask_data[0] == 0x78) {
+		// compressed
+		unsigned long uncompressed_size = ajp->width * ajp->height;
+		uint8_t *mask = xmalloc(uncompressed_size);
+		if (uncompress(mask, &uncompressed_size, mask_data, ajp->mask_size) != Z_OK) {
+			WARNING("uncompress failed");
+			free(mask);
+			return NULL;
+		} else if (uncompressed_size != (unsigned)ajp->width * (unsigned)ajp->height) {
+			WARNING("Unexpected AJP mask size");
+		}
+		return mask;
+	}
+	if (ajp->mask_size)
+		WARNING("Unsupported AJP mask format: %02x %02x %02x %02x",
+				mask_data[0], mask_data[1], mask_data[2], mask_data[3]);
+
+	return NULL;
+}
+
+static uint8_t *load_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header *ajp)
+{
+	uint8_t *mask = read_mask(pixels, mask_data, ajp);
+	if (!mask) {
+		mask = xmalloc(ajp->width * ajp->height);
+		memset(mask, 0xFF, ajp->width * ajp->height);
+	}
+
+	uint8_t *out = xmalloc(ajp->width * ajp->height * 4);
+	for (int i = 0; i < ajp->width * ajp->height; i++) {
+		out[i*4+0] = pixels[i*3+0];
+		out[i*4+1] = pixels[i*3+1];
+		out[i*4+2] = pixels[i*3+2];
+		out[i*4+3] = mask[i];
+	}
+	free(pixels);
+	free(mask);
+	return out;
+}
+
 void ajp_extract(const uint8_t *data, size_t size, struct cg *cg)
 {
 	uint8_t *buf = NULL, *jpeg_data = NULL, *mask_data = NULL;
@@ -113,37 +174,7 @@ void ajp_extract(const uint8_t *data, size_t size, struct cg *cg)
 		goto cleanup;
 	}
 
-	uint8_t *mask;
-	if (ajp.mask_size && pms8_checkfmt(mask_data)) {
-		mask = pms_extract_mask(mask_data, ajp.mask_size);
-	} else if (mask_data[0] == 0x78) {
-		// compressed
-		unsigned long uncompressed_size = width*height;
-		mask = xmalloc(uncompressed_size);
-		if (uncompress(mask, &uncompressed_size, mask_data, ajp.mask_size) != Z_OK) {
-			WARNING("uncompress failed");
-			memset(mask, 0xFF, width * height);
-		} else if (uncompressed_size != (unsigned)width * (unsigned)height) {
-			WARNING("Unexpected AJP mask size");
-		}
-	} else {
-		if (ajp.mask_size)
-			WARNING("Unsupported AJP mask format: %02x %02x %02x %02x",
-				mask_data[0], mask_data[1], mask_data[2], mask_data[3]);
-		mask = xmalloc(width * height);
-		memset(mask, 0xFF, width * height);
-	}
-
-	uint8_t *tmp = xmalloc(width * height * 4);
-	for (int i = 0; i < width * height; i++) {
-		tmp[i*4+0] = buf[i*3+0];
-		tmp[i*4+1] = buf[i*3+1];
-		tmp[i*4+2] = buf[i*3+2];
-		tmp[i*4+3] = mask[i];
-	}
-	free(buf);
-	free(mask);
-	buf = tmp;
+	buf = load_mask(buf, mask_data, &ajp);
 
 	cg->type = ALCG_AJP;
 	cg->pixels = buf;
