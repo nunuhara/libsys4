@@ -47,6 +47,30 @@ int sjis_index(const char *_src, int index)
 
 #include "system4.h"
 
+char *sjis_char2unicode(const char *_src, int *dst)
+{
+	const uint8_t *src = (const uint8_t*)_src;
+	if (*src <= 0x7f) {
+		*dst = *src;
+		return (char*)src + 1;
+	}
+
+	if (*src >= 0xa0 && *src <= 0xdf) {
+		*dst = 0xff60 + *src - 0xa0;
+		return (char*)src + 1;
+	}
+
+	// guard against invalid byte sequence
+	int c = *(src+1);
+	if (c < 0x40 || c == 0x7f || c > 0xfc) {
+		*dst = '?';
+		return (char*)src + 1;
+	}
+
+	*dst = s2u[*src - 0x80][*(src+1) - 0x40];
+	return (char*)src + 2;
+}
+
 char *sjis2utf(const char *_src, size_t len) {
 	if (!len)
 		len = strlen(_src);
@@ -55,26 +79,8 @@ char *sjis2utf(const char *_src, size_t len) {
 	uint8_t* dstp = dst;
 
 	while (*src) {
-		if (*src <= 0x7f) {
-			*dstp++ = *src++;
-			continue;
-		}
-
 		int c;
-		if (*src >= 0xa0 && *src <= 0xdf) {
-			c = 0xff60 + *src - 0xa0;
-			src++;
-		} else {
-			// guard against invalid byte sequence
-			c = *(src+1);
-			if (c < 0x40 || c == 0x7f || c > 0xfc) {
-				*dstp++ = '?';
-				src++;
-				continue;
-			}
-			c = s2u[*src - 0x80][*(src+1) - 0x40];
-			src += 2;
-		}
+		src = (uint8_t*)sjis_char2unicode((const char*)src, &c);
 
 		if (c <= 0x7f) {
 			*dstp++ = c;
