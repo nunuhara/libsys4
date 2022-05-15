@@ -50,9 +50,9 @@ static inline uint16_t sjis_code(const char *_str)
 	return *str;
 }
 
-static inline char *sjis_skip_char(char *str)
+static inline char *sjis_skip_char(const char *str)
 {
-	return str + (SJIS_2BYTE(*str) ? 2 : 1);
+	return (char*)(str + (SJIS_2BYTE(*str) ? 2 : 1));
 }
 
 #endif /* SYSTEM4_UTFSJIS */
