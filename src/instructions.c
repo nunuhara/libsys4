@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "system4.h"
+#include "system4/ain.h"
 #include "system4/instructions.h"
 
 #define SYS(syscode, sysname, rt, nargs, ...)	\
@@ -254,7 +255,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( SP_INC,         0, (),                        (T_PAGE),                   () ),
         TODO ( SP_DEC,         0, (),                        (T_PAGE),                   () ),
         OP   ( ENDFUNC,        1, (T_FUNC),                  (),                         () ),
-        TODO ( R_EQUALE,       0, (),                        (),                         () ),
+        OP   ( R_EQUALE,       0, (),                        (T_PAGE, T_VAR, T_PAGE, T_VAR), (T_INT) ),
         TODO ( R_NOTE,         0, (),                        (),                         () ),
         OP   ( SH_LOCALCREATE, 2, (T_LOCAL, T_STRUCT),       (),                         () ),
         OP   ( SH_LOCALDELETE, 1, (T_LOCAL),                 (),                         () ),
@@ -317,8 +318,8 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( SH_LOCREF_ASSIGN_MEM,              2, (T_LOCAL, T_MEMB),           (), () ),
         OP   ( PAGE_REF,                          1, (T_INT),                     (T_PAGE), (T_INT) ),
         OP   ( SH_GLOBAL_ASSIGN_LOCAL,            2, (T_GLOBAL, T_LOCAL),         (), () ),
-        TODO ( SH_STRUCTREF_GT_IMM,               2, (T_MEMB, T_INT),             (), () ),
-        TODO ( SH_STRUCT_ASSIGN_LOCALREF_ITOB,    2, (T_MEMB, T_LOCAL),           (), () ),
+        OP   ( SH_STRUCTREF_GT_IMM,               2, (T_MEMB, T_INT),             (), () ),
+        OP   ( SH_STRUCT_ASSIGN_LOCALREF_ITOB,    2, (T_MEMB, T_LOCAL),           (), () ),
         OP   ( SH_LOCAL_ASSIGN_STRUCTREF,         2, (T_LOCAL, T_MEMB),           (), () ),
         JMP  ( SH_IF_STRUCTREF_NE_LOCALREF,       3, (T_MEMB, T_LOCAL, T_ADDR),   (), () ),
         JMP  ( SH_IF_STRUCTREF_GT_IMM,            3, (T_MEMB, T_INT, T_ADDR),     (), () ),

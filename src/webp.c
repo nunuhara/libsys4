@@ -21,6 +21,7 @@
 #include "system4.h"
 #include "system4/ald.h"
 #include "system4/cg.h"
+#include "system4/file.h"
 #include "system4/webp.h"
 
 #include "little_endian.h"
@@ -53,14 +54,21 @@ void webp_get_metrics(uint8_t *data, size_t size, struct cg_metrics *m)
 
 static int get_base_cg(uint8_t *data, size_t size)
 {
-	if (size < 12)
+	if (size >= 20 && data[size-12] == 'O' && data[size-11] == 'V'
+			&& data[size-10] == 'E' && data[size-9] == 'R') {
+		data += size - 12;
+	}
+	else if (size >= 32 && data[size-24] == 'O' && data[size-23] == 'V'
+			&& data[size-22] == 'E' && data[size-21] == 'R') {
+		data += size - 24;
+	} else {
 		return -1;
-	if (data[size-12] != 'O' || data[size-11] != 'V' || data[size-10] != 'E' || data[size-9] != 'R')
-		return -1;
-	int uk = LittleEndian_getDW(data, size-8); // size?
+	}
+
+	int uk = LittleEndian_getDW(data, 4); // size?
 	if (uk != 4)
 		WARNING("WEBP: expected 0x4 preceding base CG number, got %d", uk);
-	return LittleEndian_getDW(data, size-4);
+	return LittleEndian_getDW(data, 8);
 }
 
 void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
@@ -122,7 +130,7 @@ void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 {
 	size_t len;
 	uint8_t *output;
-	FILE *f = fopen(path, "wb");
+	FILE *f = file_open_utf8(path, "wb");
 	if (!f)
 		ERROR("fopen failed: %s", strerror(errno));
 	if (alpha) {

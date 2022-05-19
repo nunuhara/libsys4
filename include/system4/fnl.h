@@ -34,14 +34,6 @@ struct fnl_font {
 	struct fnl *fnl;
 	uint32_t nr_faces;
 	struct fnl_font_face *faces;
-	uint32_t nr_sizes;
-	struct fnl_font_size *sizes;
-};
-
-struct fnl_font_size {
-	unsigned face;
-	float size;
-	unsigned denominator;
 };
 
 struct fnl_font_face {
@@ -50,7 +42,6 @@ struct fnl_font_face {
 	uint32_t uk;
 	uint32_t nr_glyphs;
 	struct fnl_glyph *glyphs;
-	float _sizes[11];
 };
 
 struct fnl_glyph {
@@ -63,8 +54,10 @@ struct fnl_glyph {
 struct fnl *fnl_open(const char *path);
 void fnl_free(struct fnl *fnl);
 
+unsigned fnl_char_to_index(uint16_t code);
+uint16_t fnl_index_to_char(unsigned index);
+
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code);
 uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *size);
-struct fnl_font_size *fnl_get_font_size(struct fnl_font *font, float size);
 
 #endif /* SYSTEM4_FNL_H */

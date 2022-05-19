@@ -31,6 +31,7 @@
 #endif
 #define possibly_unused __attribute__((unused))
 #define warn_unused __attribute__((warn_unused_result))
+#define unlikely(x) __builtin_expect(x, 0)
 
 #define ERROR(fmt, ...) \
 	sys_error("*ERROR*(%s:%s:%d): " fmt "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__)

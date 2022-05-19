@@ -30,7 +30,7 @@
  *       encoded by Shift-JIS, beginning with the ASCII space character (0x20).
  */
 
-static unsigned int sjis_code_to_index(uint16_t code)
+unsigned fnl_char_to_index(uint16_t code)
 {
 	// one byte
 	if (code < 0x20)
@@ -68,7 +68,7 @@ static unsigned int sjis_code_to_index(uint16_t code)
 	return 158 + fst_index*188 + snd_index;
 }
 
-static possibly_unused uint16_t index_to_sjis_code(unsigned index)
+uint16_t fnl_index_to_char(unsigned index)
 {
 	if (index < 95)
 		return index + 0x20;
@@ -96,7 +96,7 @@ static possibly_unused uint16_t index_to_sjis_code(unsigned index)
 
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code)
 {
-	unsigned int index = sjis_code_to_index(code);
+	unsigned int index = fnl_char_to_index(code);
 
 	if (index >= font->nr_glyphs)
 		index = 0;
@@ -104,23 +104,6 @@ struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code)
 		index = 0;
 
 	return &font->glyphs[index];
-}
-
-/*
- * Get the closest font size.
- */
-struct fnl_font_size *fnl_get_font_size(struct fnl_font *font, float size)
-{
-	float min_diff = 9999;
-	struct fnl_font_size *closest = &font->sizes[0];
-	for (unsigned i = 0; i < font->nr_sizes; i++) {
-		float diff = fabsf(font->sizes[i].size - size);
-		if (diff < min_diff) {
-			min_diff = diff;
-			closest = &font->sizes[i];
-		}
-	}
-	return closest;
 }
 
 static void fnl_read_glyph(struct buffer *r, uint32_t height, struct fnl_glyph *dst)
@@ -162,10 +145,6 @@ static void fnl_read_font_face(struct buffer *r, struct fnl_font_face *dst)
 	for (size_t i = 0; i < dst->nr_glyphs; i++) {
 		fnl_read_glyph(r, dst->height, &dst->glyphs[i]);
 	}
-
-	for (unsigned i = 0; i < 11; i++) {
-		dst->_sizes[i] = dst->height / (float)(i+2);
-	}
 }
 
 static void fnl_read_font(struct buffer *r, struct fnl_font *dst)
@@ -177,19 +156,6 @@ static void fnl_read_font(struct buffer *r, struct fnl_font *dst)
 		dst->faces[i].font = dst;
 		fnl_read_font_face(r, &dst->faces[i]);
 	}
-
-	dst->nr_sizes = dst->nr_faces * 11;
-	dst->sizes = xcalloc(dst->nr_sizes, sizeof(struct fnl_font_size));
-	for (unsigned face = 0, s = 0; face < dst->nr_faces; face++) {
-		for (unsigned i = 0; i < 11; i++) {
-			dst->sizes[s++] = (struct fnl_font_size) {
-				.face = face,
-				.size = dst->faces[face]._sizes[i],
-				.denominator = i+2
-			};
-		}
-	}
-
 }
 
 struct fnl *fnl_open(const char *path)
@@ -226,11 +192,12 @@ err:
 
 void fnl_free(struct fnl *fnl)
 {
-	for (size_t font = 0; font < fnl->nr_fonts; font++) {
-		for (size_t face = 0; face < fnl->fonts[font].nr_faces; face++) {
-			free(fnl->fonts[font].faces[face].glyphs);
+	for (size_t font_i = 0; font_i < fnl->nr_fonts; font_i++) {
+		struct fnl_font *font = &fnl->fonts[font_i];
+		for (size_t face = 0; face < font->nr_faces; face++) {
+			free(font->faces[face].glyphs);
 		}
-		free(fnl->fonts[font].faces);
+		free(font->faces);
 	}
 	free(fnl->fonts);
 	free(fnl->data);

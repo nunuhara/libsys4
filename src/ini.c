@@ -20,6 +20,7 @@
 #include <errno.h>
 #include "system4.h"
 #include "system4/ini.h"
+#include "system4/file.h"
 #include "system4/string.h"
 #include "ini_parser.tab.h"
 
@@ -44,7 +45,7 @@ struct ini_entry *ini_parse(const char *path, int *nr_entries)
 {
 	struct ini_entry _e;
 
-	if (!(yini_in = fopen(path, "rb"))) {
+	if (!(yini_in = file_open_utf8(path, "rb"))) {
 		*nr_entries = INI_FILE_ERROR;
 		return NULL;
 	}

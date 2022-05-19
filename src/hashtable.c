@@ -41,13 +41,16 @@ static unsigned long string_hash(const char *_str)
 	return hash;
 }
 
-struct hash_table *ht_create(size_t nr_buckets)
+struct hash_table *ht_create(size_t _nr_buckets)
 {
+	// round nr_buckets up to nearest power of 2
+	size_t nr_buckets = 64;
+	while (nr_buckets < _nr_buckets)
+		nr_buckets <<= 1;
+
 	struct hash_table *ht = xmalloc(sizeof(struct hash_table) + sizeof(struct ht_bucket*)*nr_buckets);
+	memset(ht->buckets, 0, sizeof(struct ht_bucket)*nr_buckets);
 	ht->nr_buckets = nr_buckets;
-	for (size_t i = 0; i < nr_buckets; i++) {
-		ht->buckets[i] = NULL;
-	}
 	return ht;
 }
 

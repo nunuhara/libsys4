@@ -1328,6 +1328,7 @@ struct ain *ain_open_conv(const char *path, char*(*conv)(const char*), int *erro
 		.conv = conv,
 	};
 	ain->version = -1;
+	ain->alloc = -1;
 	while (read_tag(&r, ain));
 	if (ain->version == -1) {
 		*error = AIN_INVALID;
@@ -1392,6 +1393,8 @@ struct ain *ain_new(int major_version, int minor_version)
 	ain->msgf = -1;
 	ain->ojmp = -1;
 	ain->game_version = 100;
+
+	ain->alloc = -1;
 
 	ain->nr_functions = 1;
 	ain->functions = xcalloc(2, sizeof(struct ain_function));

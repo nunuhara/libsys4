@@ -31,6 +31,7 @@
 #define SJIS_2BYTE(b) ( ((b) & 0xe0) == 0x80 || ((b) & 0xe0) == 0xe0 )
 
 extern int   sjis_index(const char *src, int index);
+extern char *sjis_char2unicode(const char *src, int *dst);
 extern char* sjis2utf(const char *src, size_t len);
 extern char* utf2sjis(const char *src, size_t len);
 extern bool  sjis_has_hankaku(const char *src);
@@ -49,9 +50,9 @@ static inline uint16_t sjis_code(const char *_str)
 	return *str;
 }
 
-static inline char *sjis_skip_char(char *str)
+static inline char *sjis_skip_char(const char *str)
 {
-	return str + (SJIS_2BYTE(*str) ? 2 : 1);
+	return (char*)(str + (SJIS_2BYTE(*str) ? 2 : 1));
 }
 
 #endif /* SYSTEM4_UTFSJIS */
