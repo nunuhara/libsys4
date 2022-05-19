@@ -22,6 +22,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "system4.h"
+#include "system4/ain.h"
 
 #define INSTRUCTION_MAX_ARGS 4 // FIXME: determine the real maximum
 
