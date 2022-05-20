@@ -26,7 +26,7 @@
 #include "little_endian.h"
 
 // FIXME: guard against invalid .acx file (use `struct buffer` to prevent overflow)
-static struct acx *acx_read(uint8_t *data_raw)
+static struct acx *acx_read(uint8_t *data_raw, struct string*(*conv)(const char*,size_t))
 {
 	struct acx *acx = xcalloc(1, sizeof(struct acx));
 	acx->nr_columns = LittleEndian_getDW(data_raw, 0);
@@ -48,7 +48,7 @@ static struct acx *acx_read(uint8_t *data_raw)
 				int old_ptr = ptr;
 				while (data[ptr])
 					ptr++;
-				acx->lines[line*acx->nr_columns + col].s = make_string((char*)data+old_ptr, ptr-old_ptr);
+				acx->lines[line*acx->nr_columns + col].s = conv((char*)data+old_ptr, ptr-old_ptr);
 				ptr++;
 			} else {
 				acx->lines[line*acx->nr_columns + col].i = LittleEndian_getDW(data, ptr);
@@ -60,7 +60,7 @@ static struct acx *acx_read(uint8_t *data_raw)
 	return acx;
 }
 
-struct acx *acx_load(const char *path, int *error)
+struct acx *acx_load_conv(const char *path, int *error, struct string*(*conv)(const char*,size_t))
 {
 	size_t len;
 	uint8_t *buf = file_read(path, &len);
@@ -91,7 +91,7 @@ struct acx *acx_load(const char *path, int *error)
 	}
 
 	// read data
-	struct acx *acx = acx_read(data_raw);
+	struct acx *acx = acx_read(data_raw, conv);
 	free(buf);
 	free(data_raw);
 	if (acx) {
@@ -100,6 +100,12 @@ struct acx *acx_load(const char *path, int *error)
 		*error = ACX_ERROR_INVALID;
 	}
 	return acx;
+
+}
+
+struct acx *acx_load(const char *path, int *error)
+{
+	return acx_load_conv(path, error, make_string);
 }
 
 void acx_free(struct acx *acx)

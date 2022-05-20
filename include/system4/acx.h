@@ -18,6 +18,7 @@
 #define SYSTEM4_ACX_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 struct string;
 struct acx;
@@ -46,6 +47,7 @@ struct acx {
 };
 
 struct acx *acx_load(const char *path, int *error);
+struct acx *acx_load_conv(const char *path, int *error, struct string*(*conv)(const char*,size_t));
 void acx_free(struct acx *acx);
 int acx_get_int(struct acx *acx, int line, int col);
 struct string *acx_get_string(struct acx *acx, int line, int col);
