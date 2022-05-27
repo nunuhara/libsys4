@@ -23,6 +23,8 @@
 
 bool sys_silent;
 
+void (*sys_error_handler)(const char *msg) = NULL;
+
 mem_alloc void *_xmalloc(size_t size, const char *func)
 {
 	void *ptr = malloc(size);
@@ -77,6 +79,11 @@ noreturn void sys_error(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
+	if (sys_error_handler) {
+		char msg[4096];
+		vsnprintf(msg, 4096, fmt, ap);
+		sys_error_handler(msg);
+	}
 	sys_verror(fmt, ap);
 }
 

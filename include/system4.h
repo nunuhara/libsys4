@@ -43,6 +43,7 @@
 	sys_message(fmt "\n", ##__VA_ARGS__)
 
 extern bool sys_silent;
+extern void (*sys_error_handler)(const char *msg);
 noreturn void sys_verror(const char *fmt, va_list ap);
 noreturn void sys_error(const char *fmt, ...);
 void sys_vwarning(const char *fmt, va_list ap);
