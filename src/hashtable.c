@@ -118,6 +118,15 @@ void ht_free(struct hash_table *ht)
 	free(ht);
 }
 
+void ht_free_int(struct hash_table *ht)
+{
+	for (size_t i = 0; i < ht->nr_buckets; i++) {
+		if (ht->buckets[i])
+			free(ht->buckets[i]);
+	}
+	free(ht);
+}
+
 static unsigned int int_hash(unsigned int x)
 {
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
