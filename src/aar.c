@@ -27,6 +27,25 @@
 #include "system4/aar.h"
 #include "system4/archive.h"
 #include "system4/hashtable.h"
+#include "system4/utfsjis.h"
+
+static void *ht_get_ignorecase(struct hash_table *ht, const char *key, void *dflt)
+{
+	char *uc_key = strdup(key);
+	sjis_toupper(uc_key);
+	void *r = ht_get(ht, uc_key, dflt);
+	free(uc_key);
+	return r;
+}
+
+struct ht_slot *ht_put_ignorecase(struct hash_table *ht, const char *key, void *dflt)
+{
+	char *uc_key = strdup(key);
+	sjis_toupper(uc_key);
+	void *r = ht_put(ht, uc_key, dflt);
+	free(uc_key);
+	return r;
+}
 
 static bool aar_exists(struct archive *ar, int no);
 static struct archive_data *aar_get(struct archive *ar, int no);
@@ -90,7 +109,7 @@ static bool aar_load_file(struct archive_data *data)
 	struct aar_entry *e = &ar->files[data->no];
 
 	while (e->type == AAR_SYMLINK) {
-		e = ht_get(ar->ht, e->link_target, NULL);
+		e = ht_get_ignorecase(ar->ht, e->link_target, NULL);
 		if (!e) {
 			WARNING("orphaned symlink: %s", ar->files[data->no].name);
 			return false;
@@ -153,7 +172,7 @@ static struct archive_data *aar_get(struct archive *_ar, int no)
 static struct archive_data *aar_get_by_name(struct archive *_ar, const char *name)
 {
 	struct aar_archive *ar = (struct aar_archive*)_ar;
-	struct aar_entry *e = ht_get(ar->ht, name, NULL);
+	struct aar_entry *e = ht_get_ignorecase(ar->ht, name, NULL);
 	if (!e)
 		return NULL;
 	return aar_get(_ar, e - ar->files);
@@ -253,7 +272,7 @@ static bool aar_read_index(FILE *f, struct aar_archive *ar, int *error)
 		file->name = get_string(&p, ar);
 		if (ar->version >= 2)
 			file->link_target = get_string(&p, ar);
-		ht_put(ar->ht, file->name, file);
+		ht_put_ignorecase(ar->ht, file->name, file);
 		if (p > ar->index_buf + first_entry_offset)
 			break;
 	}
