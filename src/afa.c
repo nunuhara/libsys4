@@ -174,7 +174,7 @@ static void afa_free(struct archive *_ar)
 	if (ar->name_index)
 		ht_free(ar->name_index);
 	if (ar->number_index)
-		ht_free(ar->number_index);
+		ht_free_int(ar->number_index);
 	free(ar->filename);
 	free(ar->files);
 	free(ar);
