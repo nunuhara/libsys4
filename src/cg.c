@@ -68,6 +68,43 @@ enum cg_type cg_check_format(uint8_t *data)
 	return ALCG_UNKNOWN;
 }
 
+bool cg_get_metrics_internal(uint8_t *buf, size_t buf_size, struct cg_metrics *dst)
+{
+	switch (cg_check_format(buf)) {
+	case ALCG_QNT:
+		qnt_get_metrics(buf, dst);
+		break;
+	case ALCG_AJP:
+		WARNING("AJP GetMetrics not implemented");
+		return false;
+	case ALCG_PNG:
+		png_cg_get_metrics(buf, buf_size, dst);
+		break;
+	case ALCG_WEBP:
+		webp_get_metrics(buf, buf_size, dst);
+		break;
+	case ALCG_DCF:
+		dcf_get_metrics(buf, buf_size, dst);
+		break;
+	case ALCG_PMS8:
+	case ALCG_PMS16:
+		pms_get_metrics(buf, dst);
+		break;
+	case ALCG_JPEG:
+		jpeg_cg_get_metrics(buf, buf_size, dst);
+		break;
+	default:
+		WARNING("Unknown CG type");
+		return false;
+	}
+	return true;
+}
+
+bool cg_get_metrics_data(struct archive_data *dfile, struct cg_metrics *dst)
+{
+	return cg_get_metrics_internal(dfile->data, dfile->size, dst);
+}
+
 bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst)
 {
 	struct archive_data *dfile;
@@ -75,37 +112,9 @@ bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst)
 	if (!(dfile = archive_get(ar, no)))
 		return false;
 
-	switch (cg_check_format(dfile->data)) {
-	case ALCG_QNT:
-		qnt_get_metrics(dfile->data, dst);
-		break;
-	case ALCG_AJP:
-		WARNING("AJP GetMetrics not implemented");
-		archive_free_data(dfile);
-		return false;
-	case ALCG_PNG:
-		png_cg_get_metrics(dfile->data, dfile->size, dst);
-		break;
-	case ALCG_WEBP:
-		webp_get_metrics(dfile->data, dfile->size, dst);
-		break;
-	case ALCG_DCF:
-		dcf_get_metrics(dfile->data, dfile->size, dst);
-		break;
-	case ALCG_PMS8:
-	case ALCG_PMS16:
-		pms_get_metrics(dfile->data, dst);
-		break;
-	case ALCG_JPEG:
-		jpeg_cg_get_metrics(dfile->data, dfile->size, dst);
-		break;
-	default:
-		WARNING("Unknown CG type (CG %d)", no);
-		archive_free_data(dfile);
-		return false;
-	}
+	bool r = cg_get_metrics_data(dfile, dst);
 	archive_free_data(dfile);
-	return true;
+	return r;
 }
 
 /*
