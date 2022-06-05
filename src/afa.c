@@ -28,6 +28,7 @@
 #include "system4/archive.h"
 #include "system4/buffer.h"
 #include "system4/file.h"
+#include "system4/hashtable.h"
 #include "system4/string.h"
 
 typedef struct string *(*string_conv_fun)(const char*,size_t);
@@ -58,13 +59,39 @@ static bool afa_exists(struct archive *_ar, int no)
 	return (uint32_t)no < ar->nr_files;
 }
 
+static struct afa_entry *afa_get_entry_by_name(struct afa_archive *ar, const char *name)
+{
+	if (!ar->name_index) {
+		ar->name_index = ht_create(ar->nr_files * 3 / 2);
+		for (unsigned i = 0; i < ar->nr_files; i++) {
+			ht_put(ar->name_index, ar->files[i].name->text, &ar->files[i]);
+		}
+	}
+	return ht_get(ar->name_index, name, NULL);
+}
+
+static struct afa_entry *afa_get_entry_by_number(struct afa_archive *ar, int no)
+{
+	if (ar->version != 1) {
+		return ((uint32_t)no < ar->nr_files) ? &ar->files[no] : NULL;
+	}
+
+	if (!ar->number_index) {
+		ar->number_index = ht_create(ar->nr_files * 3 / 2);
+		for (unsigned i = 0; i < ar->nr_files; i++) {
+			ht_put_int(ar->number_index, ar->files[i].no, &ar->files[i]);
+		}
+	}
+	return ht_get_int(ar->number_index, no, NULL);
+}
+
 static bool afa_load_file(struct archive_data *data)
 {
 	if (data->data)
 		return true;
 
 	struct afa_archive *ar = (struct afa_archive*)data->archive;
-	struct afa_entry *e = &ar->files[data->no];
+	struct afa_entry *e = afa_get_entry_by_number(ar, data->no);
 
 	if (ar->ar.mmapped) {
 		data->data = (uint8_t*)ar->mmap_ptr + ar->data_start + e->off;
@@ -84,25 +111,21 @@ static bool afa_load_file(struct archive_data *data)
 	return true;
 }
 
-static struct archive_data *afa_get_descriptor(struct archive *_ar, int no)
+static struct archive_data *afa_entry_to_descriptor(struct archive *ar, struct afa_entry *e)
 {
-	struct afa_archive *ar = (struct afa_archive*)_ar;
-	if ((uint32_t)no >= ar->nr_files)
-		return NULL;
-	struct afa_entry *e = &ar->files[no];
 	struct archive_data *data = xcalloc(1, sizeof(struct archive_data));
 	data->size = e->size;
 	data->name = strdup(e->name->text);
-	data->no = no;
-	data->archive = _ar;
+	data->no = e->no;
+	data->archive = ar;
 	return data;
 }
 
-static struct archive_data *afa_get(struct archive *_ar, int no)
+static struct archive_data *afa_get_by_entry(struct afa_archive *ar, struct afa_entry *entry)
 {
-	struct archive_data *data = afa_get_descriptor(_ar, no);
-	if (!data)
+	if (!entry)
 		return NULL;
+	struct archive_data *data = afa_entry_to_descriptor(&ar->ar, entry);
 	if (!afa_load_file(data)) {
 		afa_free_data(data);
 		return NULL;
@@ -110,25 +133,23 @@ static struct archive_data *afa_get(struct archive *_ar, int no)
 	return data;
 }
 
+static struct archive_data *afa_get(struct archive *_ar, int no)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	return afa_get_by_entry(ar, afa_get_entry_by_number(ar, no));
+}
+
 static struct archive_data *afa_get_by_name(struct archive *_ar, const char *name)
 {
-	// TODO: index filenames
 	struct afa_archive *ar = (struct afa_archive*)_ar;
-	for (uint32_t i = 0; i < ar->nr_files; i++) {
-		if (!strcmp(name, ar->files[i].name->text)) {
-			return afa_get(_ar, i);
-		}
-	}
-	return NULL;
+	return afa_get_by_entry(ar, afa_get_entry_by_name(ar, name));
 }
 
 static void afa_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user)
 {
 	struct afa_archive *ar = (struct afa_archive*)_ar;
 	for (uint32_t i = 0; i < ar->nr_files; i++) {
-		struct archive_data *data = afa_get_descriptor(_ar, i);
-		if (!data)
-			continue;
+		struct archive_data *data = afa_entry_to_descriptor(_ar, &ar->files[i]);
 		iter(data, user);
 		afa_free_data(data);
 	}
@@ -150,6 +171,10 @@ static void afa_free(struct archive *_ar)
 	}
 	if (ar->f)
 		fclose(ar->f);
+	if (ar->name_index)
+		ht_free(ar->name_index);
+	if (ar->number_index)
+		ht_free(ar->number_index);
 	free(ar->filename);
 	free(ar->files);
 	free(ar);
@@ -166,10 +191,10 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	}
 	entry->name->size = name_len; // fix length
 
+	if (ar->version == 1)
+		entry->no = buffer_read_int32(in) - 1;
 	entry->unknown0 = buffer_read_int32(in);
 	entry->unknown1 = buffer_read_int32(in);
-	if (ar->version == 1)
-		entry->unknown2 = buffer_read_int32(in);
 
 	entry->off = buffer_read_int32(in);
 	entry->size = buffer_read_int32(in);
@@ -196,6 +221,7 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 	buffer_init(&r, table, ar->uncompressed_size);
 	ar->files = xcalloc(ar->nr_files, sizeof(struct afa_entry));
 	for (uint32_t i = 0; i < ar->nr_files; i++) {
+		ar->files[i].no = i;
 		if (!afa_read_entry(&r, ar, &ar->files[i], error, conv)) {
 			free(ar->files);
 			goto exit_err;

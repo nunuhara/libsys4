@@ -22,15 +22,17 @@
 #include <stdio.h>
 #include "system4/archive.h"
 
+struct hash_table;
+
 struct string;
 
 struct afa_entry {
 	struct string *name;
 	uint32_t off;
 	uint32_t size;
+	int32_t no;
 	uint32_t unknown0;
 	uint32_t unknown1;
-	uint32_t unknown2;
 };
 
 struct afa_archive {
@@ -48,6 +50,8 @@ struct afa_archive {
 	void *mmap_ptr;
 	FILE *f;
 	uint8_t *data;
+	struct hash_table *name_index;
+	struct hash_table *number_index; // afa v1 only
 };
 
 struct afa_archive *afa_open(const char *file, int flags, int *error);

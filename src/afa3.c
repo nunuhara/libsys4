@@ -366,6 +366,7 @@ bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error, 
 			free(ar->files);
 			goto err;
 		}
+		ar->files[i].no = i;
 	}
 
 	ar->version = 3;
