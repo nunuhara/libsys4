@@ -111,13 +111,13 @@ static bool afa_load_file(struct archive_data *data)
 	return true;
 }
 
-static struct archive_data *afa_entry_to_descriptor(struct archive *ar, struct afa_entry *e)
+struct archive_data *afa_entry_to_descriptor(struct afa_archive *ar, struct afa_entry *e)
 {
 	struct archive_data *data = xcalloc(1, sizeof(struct archive_data));
 	data->size = e->size;
 	data->name = strdup(e->name->text);
 	data->no = e->no;
-	data->archive = ar;
+	data->archive = &ar->ar;
 	return data;
 }
 
@@ -125,7 +125,7 @@ static struct archive_data *afa_get_by_entry(struct afa_archive *ar, struct afa_
 {
 	if (!entry)
 		return NULL;
-	struct archive_data *data = afa_entry_to_descriptor(&ar->ar, entry);
+	struct archive_data *data = afa_entry_to_descriptor(ar, entry);
 	if (!afa_load_file(data)) {
 		afa_free_data(data);
 		return NULL;
@@ -149,7 +149,7 @@ static void afa_for_each(struct archive *_ar, void (*iter)(struct archive_data *
 {
 	struct afa_archive *ar = (struct afa_archive*)_ar;
 	for (uint32_t i = 0; i < ar->nr_files; i++) {
-		struct archive_data *data = afa_entry_to_descriptor(_ar, &ar->files[i]);
+		struct archive_data *data = afa_entry_to_descriptor(ar, &ar->files[i]);
 		iter(data, user);
 		afa_free_data(data);
 	}
