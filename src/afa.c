@@ -53,12 +53,6 @@ struct archive_ops afa_archive_ops = {
 	.free = afa_free,
 };
 
-static bool afa_exists(struct archive *_ar, int no)
-{
-	struct afa_archive *ar = (struct afa_archive*)_ar;
-	return (uint32_t)no < ar->nr_files;
-}
-
 static struct afa_entry *afa_get_entry_by_name(struct afa_archive *ar, const char *name)
 {
 	if (!ar->name_index) {
@@ -83,6 +77,12 @@ static struct afa_entry *afa_get_entry_by_number(struct afa_archive *ar, int no)
 		}
 	}
 	return ht_get_int(ar->number_index, no, NULL);
+}
+
+static bool afa_exists(struct archive *_ar, int no)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	return !!afa_get_entry_by_number(ar, no);
 }
 
 static bool afa_load_file(struct archive_data *data)
