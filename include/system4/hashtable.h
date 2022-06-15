@@ -33,6 +33,7 @@ struct hash_table *ht_create(size_t nr_buckets);
 void ht_free(struct hash_table *ht);
 
 void *ht_get(struct hash_table *ht, const char *key, void *dflt);
+bool _ht_get(struct hash_table *ht, const char *key, void **out);
 struct ht_slot *ht_put(struct hash_table *ht, const char *key, void *dflt);
 void ht_foreach_value(struct hash_table *ht, void(*fun)(void*));
 

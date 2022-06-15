@@ -54,15 +54,23 @@ struct hash_table *ht_create(size_t _nr_buckets)
 	return ht;
 }
 
-void *ht_get(struct hash_table *ht, const char *key, void *dflt)
+bool _ht_get(struct hash_table *ht, const char *key, void **out)
 {
 	unsigned long k = string_hash(key) & (ht->nr_buckets - 1);
 	if (!ht->buckets[k])
-		return dflt;
+		return false;
 	for (size_t i = 0; i < ht->buckets[k]->nr_slots; i++) {
-		if (!strcmp(ht->buckets[k]->slots[i].key, key))
-			return ht->buckets[k]->slots[i].value;
+		if (!strcmp(ht->buckets[k]->slots[i].key, key)) {
+			*out = ht->buckets[k]->slots[i].value;
+			return true;
+		}
 	}
+	return false;
+}
+
+void *ht_get(struct hash_table *ht, const char *key, void *dflt)
+{
+	_ht_get(ht, key, &dflt);
 	return dflt;
 }
 
