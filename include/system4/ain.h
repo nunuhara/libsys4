@@ -132,6 +132,7 @@ enum ain_data_type {
 	case AIN_REF_ARRAY_BOOL:		\
 	case AIN_REF_LONG_INT:			\
 	case AIN_REF_ARRAY_LONG_INT:		\
+	case AIN_REF_DELEGATE:			\
 	case AIN_REF_ARRAY_DELEGATE:		\
 	case AIN_REF_ARRAY
 
