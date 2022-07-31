@@ -1523,20 +1523,35 @@ void ain_free_messages(struct ain *ain)
 	ain->nr_messages = 0;
 }
 
+void ain_free_hll_argument(struct ain_hll_argument *arg)
+{
+	free(arg->name);
+	ain_free_type(&arg->type);
+}
+
+void ain_free_hll_function(struct ain_hll_function *f)
+{
+	free(f->name);
+	ain_free_type(&f->return_type);
+	for (int i = 0; i < f->nr_arguments; i++) {
+		ain_free_hll_argument(&f->arguments[i]);
+	}
+	free(f->arguments);
+}
+
+void ain_free_library(struct ain_library *lib)
+{
+	free(lib->name);
+	for (int i = 0; i < lib->nr_functions; i++) {
+		ain_free_hll_function(&lib->functions[i]);
+	}
+	free(lib->functions);
+}
+
 void ain_free_libraries(struct ain *ain)
 {
-	for (int lib = 0; lib < ain->nr_libraries; lib++) {
-		free(ain->libraries[lib].name);
-		for (int f = 0; f < ain->libraries[lib].nr_functions; f++) {
-			free(ain->libraries[lib].functions[f].name);
-			ain_free_type(&ain->libraries[lib].functions[f].return_type);
-			for (int a = 0; a < ain->libraries[lib].functions[f].nr_arguments; a++) {
-				free(ain->libraries[lib].functions[f].arguments[a].name);
-				ain_free_type(&ain->libraries[lib].functions[f].arguments[a].type);
-			}
-			free(ain->libraries[lib].functions[f].arguments);
-		}
-		free(ain->libraries[lib].functions);
+	for (int i = 0; i < ain->nr_libraries; i++) {
+		ain_free_library(&ain->libraries[i]);
 	}
 	free(ain->libraries);
 	ain->libraries = NULL;
