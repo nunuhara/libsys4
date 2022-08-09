@@ -419,6 +419,16 @@ int ain_add_message(struct ain *ain, const char *str)
 	return ain->nr_messages - 1;
 }
 
+int ain_add_switch(struct ain *ain)
+{
+	int no = ain->nr_switches;
+	ain->switches = xrealloc_array(ain->switches, no, no+1, sizeof(struct ain_switch));
+	ain->switches[no].case_type = AIN_SWITCH_INT;
+	ain->switches[no].default_address = -1;
+	ain->nr_switches++;
+	return no;
+}
+
 int ain_add_file(struct ain *ain, const char *filename)
 {
 	ain->filenames = xrealloc_array(ain->filenames, ain->nr_filenames, ain->nr_filenames+1, sizeof(char*));
