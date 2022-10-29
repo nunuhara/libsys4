@@ -24,6 +24,7 @@
 #include "system4/ajp.h"
 #include "system4/dcf.h"
 #include "system4/jpeg.h"
+#include "system4/pcf.h"
 #include "system4/pms.h"
 #include "system4/png.h"
 #include "system4/qnt.h"
@@ -39,6 +40,7 @@ const char *cg_file_extensions[_ALCG_NR_FORMATS] = {
 	[ALCG_WEBP]    = "webp",
 	[ALCG_DCF]     = "dcf",
 	[ALCG_JPEG]    = "jpg",
+	[ALCG_PCF]     = "pcf",
 };
 
 /*
@@ -64,6 +66,8 @@ enum cg_type cg_check_format(uint8_t *data)
 		return ALCG_PMS16;
 	} else if (jpeg_cg_checkfmt(data)) {
 		return ALCG_JPEG;
+	} else if (pcf_checkfmt(data)) {
+		return ALCG_PCF;
 	}
 	return ALCG_UNKNOWN;
 }
@@ -92,6 +96,9 @@ bool cg_get_metrics_internal(uint8_t *buf, size_t buf_size, struct cg_metrics *d
 		break;
 	case ALCG_JPEG:
 		jpeg_cg_get_metrics(buf, buf_size, dst);
+		break;
+	case ALCG_PCF:
+		pcf_get_metrics(buf, buf_size, dst);
 		break;
 	default:
 		WARNING("Unknown CG type");
@@ -156,6 +163,9 @@ static struct cg *cg_load_internal(uint8_t *buf, size_t buf_size, struct archive
 		break;
 	case ALCG_JPEG:
 		jpeg_cg_extract(buf, buf_size, cg);
+		break;
+	case ALCG_PCF:
+		pcf_extract(buf, buf_size, cg);
 		break;
 	default:
 		WARNING("Unknown CG type");
