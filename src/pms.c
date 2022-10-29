@@ -327,10 +327,14 @@ void pms_extract(const uint8_t *data, size_t size, struct cg *cg)
 	pms_read_header(&pms, data);
 	pms_init_metrics(&pms, &cg->metrics);
 
-	if ((size_t)pms.dp > size)
-		ERROR("PMS pixel offset out of bounds");
-	if ((size_t)pms.pp > size)
-		ERROR("PMS palette/alpha offset out of bounds");
+	if ((size_t)pms.dp > size) {
+		WARNING("PMS pixel offset out of bounds");
+		return;
+	}
+	if ((size_t)pms.pp > size) {
+		WARNING("PMS palette/alpha offset out of bounds");
+		return;
+	}
 
 	if (pms.bpp == 8)
 		pms8_load(data, &pms, cg);
@@ -345,13 +349,19 @@ uint8_t *pms_extract_mask(const uint8_t *data, size_t size)
 	struct pms_header pms;
 	pms_read_header(&pms, data);
 
-	if ((size_t)pms.dp > size)
-		ERROR("PMS pixel offset out of bounds");
-	if ((size_t)pms.pp > size)
-		ERROR("PMS palette/alpha offset out of bounds");
+	if ((size_t)pms.dp > size) {
+		WARNING("PMS pixel offset out of bounds");
+		return NULL;
+	}
+	if ((size_t)pms.pp > size) {
+		WARNING("PMS palette/alpha offset out of bounds");
+		return NULL;
+	}
 
-	if (pms.bpp != 8)
-		ERROR("PMS mask is not 8bpp");
+	if (pms.bpp != 8) {
+		WARNING("PMS mask is not 8bpp");
+		return NULL;
+	}
 
 	return pms8_extract(&pms, data + pms.dp);
 }

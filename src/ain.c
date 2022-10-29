@@ -78,7 +78,7 @@ static void struct_ht_add(struct ain *ain, intptr_t i)
 	struct ain_struct *s = &ain->structures[i];
 	struct ht_slot *kv = ht_put(ain->_struct_ht, s->name, NULL);
 	if (kv->value) {
-		ERROR("Duplicate structure names: '%s'", s->name);
+		WARNING("Duplicate structure names: '%s'", s->name);
 	}
 	kv->value = (void*)i;
 }
@@ -194,8 +194,10 @@ int ain_get_function(struct ain *ain, char *name)
 		if (name[len] == '#') {
 			char *endptr;
 			n = strtol(name+len+1, &endptr, 10);
-			if (!name[len+1] || *endptr || n < 0)
-				ERROR("Invalid function name: '%s'", name);
+			if (!name[len+1] || *endptr || n < 0) {
+				WARNING("Invalid function name: '%s'", name);
+				n = 0;
+			}
 			name[len] = '\0';
 			break;
 		}
@@ -218,7 +220,8 @@ int ain_get_function_index(struct ain *ain, struct ain_function *f)
 			return i;
 	}
 err:
-	ERROR("Invalid function: '%s'", f->name);
+	WARNING("Invalid function: '%s'", f->name);
+	return 0;
 }
 
 int ain_get_struct(struct ain *ain, char *name)
@@ -762,7 +765,7 @@ static void read_variable_initval(struct ain_reader *r, struct ain_variable *v)
 {
 	if ((v->has_initval = read_int32(r))) {
 		if (v->has_initval != 1)
-			ERROR("variable->has_initval is not boolean? %d (at %p)", v->has_initval, r->index - 4);
+			WARNING("variable->has_initval is not boolean: %d (at %p)", v->has_initval, r->index - 4);
 		switch (v->type.data) {
 		case AIN_STRING:
 			v->initval.s = read_string(r);
@@ -792,7 +795,7 @@ static void read_variable_type(struct ain_reader *r, struct ain_type *t)
 	//      array of struct#13 will have struct type 13).
 	if (AIN_VERSION_GTE(r->ain, 11, 0)) {
 		if (t->rank < 0 || t->rank > 1)
-			ERROR("non-boolean rank in ain v11+ (%d, %d, %d)", t->data, t->struc, t->rank);
+			WARNING("non-boolean rank in ain v11+ (%d, %d, %d)", t->data, t->struc, t->rank);
 		if (t->rank)
 			t->array_type = read_array_type(r);
 	}
@@ -867,7 +870,7 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 		if (AIN_VERSION_GTE(ain, 11, 0)) {
 			funs[i].is_lambda = read_int32(r); // known values: 0, 1
 			if (funs[i].is_lambda && funs[i].is_lambda != 1) {
-				ERROR("function->is_lambda is not a boolean? %d (at %p)", funs[i].is_lambda, r->index - 4);
+				WARNING("function->is_lambda is not a boolean: %d (at %p)", funs[i].is_lambda, r->index - 4);
 			}
 		}
 
@@ -1040,11 +1043,15 @@ static struct ain_function_type *read_function_types(struct ain_reader *r, int c
 		const struct instruction *instr;			\
 		for (size_t addr = start; addr < ain->code_size; addr += instruction_width(instr->opcode)) { \
 			uint16_t _fei_opcode = LittleEndian_getW(ain->code, addr); \
-			if (_fei_opcode >= NR_OPCODES)			\
-				ERROR("Unknown/invalid opcode: %u", _fei_opcode); \
+			if (_fei_opcode >= NR_OPCODES) {		\
+				WARNING("Unknown/invalid opcode: %u", _fei_opcode); \
+				break;					\
+			}						\
 			instr = &instructions[_fei_opcode];		\
-			if (addr + instr->nr_args * 4 >= ain->code_size) \
-				ERROR("CODE section truncated?");	\
+			if (addr + instr->nr_args * 4 >= ain->code_size) { \
+				WARNING("CODE section truncated?");	\
+				break;					\
+			}						\
 			user_code;					\
 		}							\
 	} while (0)

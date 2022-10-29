@@ -87,8 +87,10 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 	// FIXME: possible infinite recursion on broken/malicious ALD
 	struct cg *base_cg = cg_load(ar, base-1);
 	if (base_cg->metrics.w != cg->metrics.w || base_cg->metrics.h != cg->metrics.h) {
-		ERROR("webp base CG dimensions don't match: (%d,%d) / (%d,%d)",
-		      base_cg->metrics.w, base_cg->metrics.h, cg->metrics.w, cg->metrics.h);
+		WARNING("webp base CG dimensions don't match: (%d,%d) / (%d,%d)",
+		        base_cg->metrics.w, base_cg->metrics.h, cg->metrics.w, cg->metrics.h);
+		cg_free(base_cg);
+		return;
 	}
 
 	// mask alpha color
@@ -131,15 +133,17 @@ void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 	size_t len;
 	uint8_t *output;
 	FILE *f = file_open_utf8(path, "wb");
-	if (!f)
-		ERROR("fopen failed: %s", strerror(errno));
+	if (!f) {
+		WARNING("fopen failed: %s", strerror(errno));
+		return;
+	}
 	if (alpha) {
 		len = WebPEncodeLosslessRGBA(pixels, w, h, w*4, &output);
 	} else {
 		len = WebPEncodeLosslessRGB(pixels, w, h, w*3, &output);
 	}
 	if (!fwrite(output, len, 1, f))
-		ERROR("fwrite failed: %s", strerror(errno));
+		WARNING("fwrite failed: %s", strerror(errno));
 	fclose(f);
 	WebPFree(output);
 }

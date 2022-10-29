@@ -242,7 +242,7 @@ static void read_talt(struct flat_archive *ar)
 		ar->talt_entries[i].off = ar->talt.off + r.index + 8;
 
 		if (strncmp(buffer_strdata(&r), "AJP", 4))
-			ERROR("NOT AN AJP FILE");
+			WARNING("File in flat TALT section is not ajp format");
 
 		buffer_skip(&r, ar->talt_entries[i].size);
 		buffer_align(&r, 4);

@@ -144,14 +144,22 @@ void ajp_extract(const uint8_t *data, size_t size, struct cg *cg)
 	ajp_extract_header(data, &ajp);
 	ajp_init_metrics(&ajp, &cg->metrics);
 
-	if (ajp.jpeg_off > size)
-		ERROR("AJP JPEG offset invalid");
-	if (ajp.jpeg_off + ajp.jpeg_size > size)
-		ERROR("AJP JPEG size invalid");
-	if (ajp.mask_off > size)
-		ERROR("AJP mask offset invalid");
-	if (ajp.mask_off + ajp.mask_size > size)
-		ERROR("AJP mask size invalid");
+	if (ajp.jpeg_off > size) {
+		WARNING("AJP JPEG offset invalid");
+		return;
+	}
+	if (ajp.jpeg_off + ajp.jpeg_size > size) {
+		WARNING("AJP JPEG size invalid");
+		return;
+	}
+	if (ajp.mask_off > size) {
+		WARNING("AJP mask offset invalid");
+		return;
+	}
+	if (ajp.mask_off + ajp.mask_size > size) {
+		WARNING("AJP mask size invalid");
+		return;
+	}
 
 	jpeg_data = xmalloc(ajp.jpeg_size);
 	mask_data = xmalloc(ajp.mask_size);

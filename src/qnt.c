@@ -70,7 +70,7 @@ void qnt_extract_header(const uint8_t *b, struct qnt_header *qnt)
 		qnt->alpha_size = LittleEndian_getDW(b, 40);
 	}
 	if (qnt->bpp != 24)
-		ERROR("Unsupported bits-per-pixel: %d", qnt->bpp);
+		WARNING("Unsupported bits-per-pixel: %d", qnt->bpp);
 }
 
 /*
@@ -330,8 +330,12 @@ static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
 	unsigned long destsize = compressBound(bufsize);
 	uint8_t *compressed = malloc(destsize);
 	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
-	if (r != Z_OK)
-		ERROR("qnt: compress() failed with error code %d", r);
+	if (r != Z_OK) {
+		WARNING("qnt: compress() failed with error code %d", r);
+		free(buf);
+		free(compressed);
+		return NULL;
+	}
 	qnt->pixel_size = destsize;
 
 	free(buf);
@@ -352,8 +356,12 @@ static uint8_t *encode_alpha(struct qnt_header *qnt, uint8_t **rows) {
 	unsigned long destsize = compressBound(bufsize);
 	uint8_t *compressed = malloc(destsize);
 	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
-	if (r != Z_OK)
-		ERROR("qnt: compress() failed with error code %d", r);
+	if (r != Z_OK) {
+		WARNING("qnt: compress() failed with error code %d", r);
+		free(buf);
+		free(compressed);
+		return NULL;
+	}
 	qnt->alpha_size = destsize;
 
 	free(buf);
@@ -414,6 +422,11 @@ int qnt_write(struct cg *cg, FILE *f)
 	filter(rows, cg->metrics.w, cg->metrics.h);
 	uint8_t *pixel_data = encode_pixels(&qnt, rows);
 	uint8_t *alpha_data = encode_alpha(&qnt, rows);
+	if (!pixel_data || !alpha_data) {
+		free(pixel_data);
+		free(alpha_data);
+		return 0;
+	}
 
 	qnt_write_header(&qnt, f);
 	fwrite(pixel_data, qnt.pixel_size, 1, f);
