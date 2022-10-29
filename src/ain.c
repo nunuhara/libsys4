@@ -842,15 +842,17 @@ static struct ain_function *read_functions(struct ain_reader *r, int count, stru
 			ain->alloc = i;
 
 		// detect game (to apply needed quirks)
-		if (ain->version == 14 && ain->minor_version == 0) {
-			if (!strcmp(funs[i].name, "DohnaDohna@0")) {
-				ain->minor_version = 1;
+		if (ain->version == 14 && ain->minor_version == 1) {
+			// Evenicle 2
+			if (!strcmp(funs[i].name, "C_MedicaMenu@0")) {
+				ain->minor_version = 0;
 			}
-			if (!strcmp(funs[i].name, "AneYume@Initialize")) {
-				ain->minor_version = 1;
+			// Haha Ranman
+			else if (!strcmp(funs[i].name, "CInvasionHexScene@0")) {
+				ain->minor_version = 0;
 			}
-			if (!strcmp(funs[i].name, "_ALICETOOLS_AINV14_01")) {
-				ain->minor_version = 1;
+			else if (!strcmp(funs[i].name, "_ALICETOOLS_AINV14_00")) {
+				ain->minor_version = 0;
 			}
 		}
 
@@ -1124,6 +1126,9 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 			instructions[DG_STR_TO_METHOD].nr_args = 1;
 			instructions[CALLMETHOD].args[0] = T_INT;
 		}
+		// XXX: default to 14.1 (14.0 games handled individually)
+		if (ain->version == 14)
+			ain->minor_version = 1;
 	} else if (TAG_EQ("KEYC")) {
 		start_section(r, &ain->KEYC);
 		ain->keycode = read_int32(r);
