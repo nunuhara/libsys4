@@ -42,6 +42,7 @@ struct archive_ops {
 	bool (*exists_by_name)(struct archive *ar, const char *name);
 	struct archive_data *(*get)(struct archive *ar, int no);
 	struct archive_data *(*get_by_name)(struct archive *ar, const char *name);
+	struct archive_data *(*get_by_basename)(struct archive *ar, const char *name);
 	bool (*load_file)(struct archive_data *file);
 	void (*release_file)(struct archive_data *file);
 	struct archive_data *(*copy_descriptor)(struct archive_data *src);
@@ -90,6 +91,14 @@ static inline struct archive_data *archive_get(struct archive *ar, int no)
 static inline struct archive_data *archive_get_by_name(struct archive *ar, const char *name)
 {
 	return ar->ops->get_by_name ? ar->ops->get_by_name(ar, name) : NULL;
+}
+
+/*
+ * Retrive a file from an archive by basename (i.e. ignoring file extension).
+ */
+static inline struct archive_data *archive_get_by_basename(struct archive *ar, const char *name)
+{
+	return ar->ops->get_by_basename ? ar->ops->get_by_basename(ar, name) : NULL;
 }
 
 /*

@@ -37,6 +37,8 @@ static void alk_free(struct archive *_ar);
 struct archive_ops alk_archive_ops = {
 	.exists = alk_exists,
 	.get = alk_get,
+	.get_by_name = NULL,
+	.get_by_basename = NULL,
 	.load_file = alk_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,

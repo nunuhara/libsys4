@@ -51,6 +51,7 @@ struct afa_archive {
 	FILE *f;
 	uint8_t *data;
 	struct hash_table *name_index;
+	struct hash_table *basename_index;
 	struct hash_table *number_index; // afa v1 only
 };
 

@@ -37,6 +37,8 @@ static void dlf_free(struct archive *_ar);
 struct archive_ops dlf_archive_ops = {
 	.exists = dlf_exists,
 	.get = dlf_get,
+	.get_by_name = NULL,
+	.get_by_basename = NULL,
 	.load_file = dlf_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,

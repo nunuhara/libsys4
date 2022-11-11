@@ -169,7 +169,10 @@ static void flat_for_each(struct archive *_ar, void (*iter)(struct archive_data 
 }
 
 static struct archive_ops flat_archive_ops = {
+	.exists = NULL,
 	.get = flat_get,
+	.get_by_name = NULL,
+	.get_by_basename = NULL,
 	.load_file = flat_load_file,
 	.release_file = flat_release_file,
 	.copy_descriptor = flat_copy_descriptor,

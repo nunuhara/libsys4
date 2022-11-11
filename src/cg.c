@@ -155,7 +155,7 @@ static struct cg *cg_load_internal(uint8_t *buf, size_t buf_size, struct archive
 		webp_extract(buf, buf_size, cg, ar);
 		break;
 	case ALCG_DCF:
-		dcf_extract(buf, buf_size, cg);
+		dcf_extract(buf, buf_size, cg, ar);
 		break;
 	case ALCG_PMS8:
 	case ALCG_PMS16:

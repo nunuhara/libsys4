@@ -60,6 +60,7 @@ struct archive_ops aar_archive_ops = {
 	.exists = aar_exists,
 	.get = aar_get,
 	.get_by_name = aar_get_by_name,
+	.get_by_basename = NULL,
 	.load_file = aar_load_file,
 	.release_file = aar_release_file,
 	.copy_descriptor = NULL,

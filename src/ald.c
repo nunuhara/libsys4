@@ -42,6 +42,7 @@ struct archive_ops ald_archive_ops = {
 	.exists = ald_exists,
 	.get = ald_get,
 	.get_by_name = ald_get_by_name,
+	.get_by_basename = NULL,
 	.load_file = ald_load_file,
 	.release_file = NULL,
 	.copy_descriptor = ald_copy_descriptor,

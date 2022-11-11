@@ -36,6 +36,7 @@ typedef struct string *(*string_conv_fun)(const char*,size_t);
 static bool afa_exists(struct archive *ar, int no);
 static struct archive_data *afa_get(struct archive *ar, int no);
 static struct archive_data *afa_get_by_name(struct archive *ar, const char *name);
+static struct archive_data *afa_get_by_basename(struct archive *ar, const char *name);
 static bool afa_load_file(struct archive_data *data);
 static void afa_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
 static void afa_free_data(struct archive_data *data);
@@ -45,6 +46,7 @@ struct archive_ops afa_archive_ops = {
 	.exists = afa_exists,
 	.get = afa_get,
 	.get_by_name = afa_get_by_name,
+	.get_by_basename = afa_get_by_basename,
 	.load_file = afa_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,
@@ -62,6 +64,22 @@ static struct afa_entry *afa_get_entry_by_name(struct afa_archive *ar, const cha
 		}
 	}
 	return ht_get(ar->name_index, name, NULL);
+}
+
+static struct afa_entry *afa_get_entry_by_basename(struct afa_archive *ar, const char *name)
+{
+	if (!ar->basename_index) {
+		ar->basename_index = ht_create(ar->nr_files * 3 / 2);
+		for (unsigned i = 0; i < ar->nr_files; i++) {
+			char *basename = xstrdup(ar->files[i].name->text);
+			char *dot = strrchr(basename, '.');
+			if (dot)
+				*dot = '\0';
+			ht_put(ar->basename_index, basename, &ar->files[i]);
+			free(basename);
+		}
+	}
+	return ht_get(ar->basename_index, name, NULL);
 }
 
 static struct afa_entry *afa_get_entry_by_number(struct afa_archive *ar, int no)
@@ -145,6 +163,12 @@ static struct archive_data *afa_get_by_name(struct archive *_ar, const char *nam
 	return afa_get_by_entry(ar, afa_get_entry_by_name(ar, name));
 }
 
+static struct archive_data *afa_get_by_basename(struct archive *_ar, const char *name)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	return afa_get_by_entry(ar, afa_get_entry_by_basename(ar, name));
+}
+
 static void afa_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user)
 {
 	struct afa_archive *ar = (struct afa_archive*)_ar;
@@ -173,6 +197,8 @@ static void afa_free(struct archive *_ar)
 		fclose(ar->f);
 	if (ar->name_index)
 		ht_free(ar->name_index);
+	if (ar->basename_index)
+		ht_free(ar->basename_index);
 	if (ar->number_index)
 		ht_free_int(ar->number_index);
 	free(ar->filename);

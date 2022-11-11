@@ -23,9 +23,10 @@
 
 struct cg;
 struct cg_metrics;
+struct archive;
 
 bool dcf_checkfmt(const uint8_t *data);
-void dcf_extract(const uint8_t *data, size_t size, struct cg *cg);
+void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive *ar);
 void dcf_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *m);
 
 #endif /* SYSTEM4_DCF_H */
