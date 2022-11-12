@@ -169,7 +169,7 @@ void buffer_write_string(struct buffer *b, struct string *s)
 
 void buffer_write_cstring(struct buffer *b, const char *s)
 {
-	buffer_write_bytes(b, (uint8_t*)s, strlen(s)+1);
+	buffer_write_bytes(b, (uint8_t*)s, strlen(s));
 }
 
 void buffer_write_pascal_cstring(struct buffer *b, const char *s)
