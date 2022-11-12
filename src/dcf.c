@@ -212,7 +212,7 @@ static struct cg *dcf_get_base_cg(const char *name, struct archive *ar)
 void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 {
 	struct buffer buf;
-	struct dcf_header hdr;
+	struct dcf_header hdr = {0};
 	uint8_t *chunk_map = NULL;
 
 	buffer_init(&buf, (uint8_t*)data, size);
@@ -265,6 +265,7 @@ void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive
 
 cleanup:
 	free(chunk_map);
+	free(hdr.base_cg_name);
 }
 
 static const uint8_t *dcf_get_qnt(const uint8_t *data)
