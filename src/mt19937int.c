@@ -59,7 +59,7 @@ void mt19937_init(struct mt19937 *mt, uint32_t seed)
     mt->st[0]= seed & 0xffffffff;
     for (int i=1; i<N; i++)
         mt->st[i] = (69069 * mt->st[i-1]) & 0xffffffff;
-	mt->i = N;
+    mt->i = N;
 }
 
 uint32_t mt19937_genrand(struct mt19937 *mt)

@@ -97,6 +97,20 @@ const struct syscall syscalls[NR_SYSCALLS] = {
 		.stack_out = AINIT outvals,				\
 	}
 
+#define _JMP(code, opname, nargs, argvals, stackvals, outvals)		\
+	[code] = {							\
+		.opcode = code,						\
+		.name = opname,						\
+		.ip_inc = 0,						\
+		.implemented = true,					\
+		.nr_args = nargs,					\
+		.args = AINIT argvals,					\
+		.nr_stack_args = NARGS stackvals,			\
+		.stack_args = AINIT stackvals,				\
+		.nr_stack_out = NARGS outvals,				\
+		.stack_out = AINIT outvals,				\
+	}
+
 #define JMP(code, nargs, argvals, stackvals, outvals)			\
 	[code] = {							\
 		.opcode = code,						\
@@ -217,7 +231,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( A_FILL,         0, (),                        (T_PAGE, T_VAR, T_INT, T_INT, T_INT), () ),
         OP   ( C_REF,          0, (),                        (T_STRING, T_INT),          (T_INT) ),
         OP   ( C_ASSIGN,       0, (),                        (T_STRING, T_INT, T_INT),   (T_INT) ),
-        JMP  ( MSG,            1, (T_MSG),                   (),                         () ),
+        _JMP ( _MSG, "MSG",    1, (T_MSG),                   (),                         () ),
         OP   ( CALLHLL,        2, (T_HLL, T_HLLFUNC, T_INT), (), /* varies */            () ), // XXX: changed in ain version > 8
         OP   ( PUSHSTRUCTPAGE, 0, (),                        (),                         (T_PAGE) ),
         JMP  ( CALLMETHOD,     1, (T_FUNC),                  (), /* varies */            () ),

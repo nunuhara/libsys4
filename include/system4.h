@@ -21,6 +21,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+// fix windows.h symbol conflict
+#undef ERROR
+
 // TODO: should put in a separate header and guard with feature checks
 #define const_pure __attribute__((const))
 #define mem_alloc __attribute__((malloc))

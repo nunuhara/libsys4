@@ -24,6 +24,9 @@
 #include "system4.h"
 #include "system4/ain.h"
 
+// fix windows.h symbol conflict
+#undef DELETE
+
 #define INSTRUCTION_MAX_ARGS 4 // FIXME: determine the real maximum
 
 enum syscall_code {
@@ -159,7 +162,7 @@ enum opcode
         A_FILL         = 0x56,
         C_REF          = 0x57,
         C_ASSIGN       = 0x58,
-        MSG            = 0x59,
+        _MSG           = 0x59, // XXX: "MSG" defined in windows.h
         CALLHLL        = 0x5a,
         PUSHSTRUCTPAGE = 0x5b,
         CALLMETHOD     = 0x5c,

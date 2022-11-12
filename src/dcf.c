@@ -107,8 +107,8 @@ static uint8_t *dcf_read_dfdl(struct buffer *in, size_t *size_out)
 	}
 	size_t next_pos = in->index + dfdl_size;
 
-	size_t uncompressed_size = buffer_read_int32(in);
-	if (uncompressed_size < 0 || uncompressed_size > 40000) {
+	unsigned long uncompressed_size = buffer_read_int32(in);
+	if (uncompressed_size > 40000) {
 		WARNING("Invalid size for uncompressed chunk map");
 		return NULL;
 	}
