@@ -58,27 +58,44 @@ static long get_file_size(FILE *fp)
 	return ftell(fp);
 }
 
+/* Get the size of the pointer table and the link table. */
+static bool get_table_sizes(FILE *fp, int *ptrsize_out, int *mapsize_out)
+{
+	uint8_t b[6];
+
+	// read top 6 bytes
+	fseek(fp, 0L, SEEK_SET);
+	if (fread(b, 1, 6, fp) != 6)
+		return false;
+
+	// un-obfuscate the first 3 bytes if necessary
+	if (b[1] == 'L' && b[2] == 'D') {
+		b[0] -= 0x40;
+		b[1] = 0x00;
+		b[2] = 0x00;
+	}
+
+	// get ptrsize and mapsize
+	int ptrsize = LittleEndian_get3B(b, 0);
+	if (ptrsize_out)
+		*ptrsize_out = ptrsize;
+	if (mapsize_out)
+		*mapsize_out = LittleEndian_get3B(b, 3) - ptrsize;
+	return true;
+}
+
 /* Check validity of file. */
 static bool file_check(FILE *fp)
 {
-	uint8_t b[6];
 	int mapsize, ptrsize;
 	long filesize;
 
 	// get filesize / 256
 	filesize = (get_file_size(fp) + 255) >> 8;
 
-	long fsize = get_file_size(fp);
-	fseek(fp, fsize  & ~0xFF, SEEK_SET);
-	fread(b, 1, 4, fp);
-
-	// read top 6 bytes
-	fseek(fp, 0L, SEEK_SET);
-	fread(b, 1, 6, fp);
-
 	// get ptrsize and mapsize
-	ptrsize = LittleEndian_get3B(b, 0);
-	mapsize = LittleEndian_get3B(b, 3) - ptrsize;
+	if (!get_table_sizes(fp, &ptrsize, &mapsize))
+		return false;
 
 	// check that sizes are valid
 	if (ptrsize < 0 || mapsize < 0)
@@ -91,23 +108,18 @@ static bool file_check(FILE *fp)
 /* Read the file map of an ALD file into a `struct ald_archive`. */
 static void get_filemap(struct ald_archive *archive, FILE *fp)
 {
-	uint8_t b[6], *_b;
+	uint8_t *b;
 	int mapsize, ptrsize;
 
-	// read top 6 bytes
-	fseek(fp, 0L, SEEK_SET);
-	fread(b, 1, 6, fp);
-
 	// get ptrsize and mapsize
-	ptrsize = LittleEndian_get3B(b, 0);
-	mapsize = LittleEndian_get3B(b, 3) - ptrsize;
+	get_table_sizes(fp, &ptrsize, &mapsize);
 
 	// allocate read buffer
-	_b = malloc(mapsize * 256);
+	b = malloc(mapsize * 256);
 
 	// read filemap
 	fseek(fp, ptrsize * 256L, SEEK_SET);
-	fread(_b, 256, mapsize, fp);
+	fread(b, 256, mapsize, fp);
 
 	// get max file number from mapdata
 	archive->maxfile = (mapsize * 256) / 3;
@@ -117,46 +129,42 @@ static void get_filemap(struct ald_archive *archive, FILE *fp)
 	archive->map_ptr = malloc(sizeof(short) * archive->maxfile);
 
 	for (int i = 0; i < archive->maxfile; i++) {
-		archive->map_disk[i] = _b[i * 3] - 1;
-		archive->map_ptr[i] = LittleEndian_getW(_b, i * 3 + 1) - 1;
+		archive->map_disk[i] = b[i * 3] - 1;
+		archive->map_ptr[i] = LittleEndian_getW(b, i * 3 + 1) - 1;
 	}
 
-	free(_b);
+	free(b);
 	return;
 }
 
 /* Read the pointer map of an ALD file into a `struct ald_archive`. */
 static void get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 {
-	uint8_t b[8], *_b;
+	uint8_t *b;
 	int ptrsize, filecnt;
 
-	// read top 6 bytes
-	fseek(fp, 0L, SEEK_SET);
-	fread(b, 1, 6, fp);
-
 	// get ptrmap size
-	ptrsize = LittleEndian_get3B(b, 0);
+	get_table_sizes(fp, &ptrsize, NULL);
 
 	// estimate number of entries in ptrmap
 	filecnt = (ptrsize * 256) / 3;
 
 	// allocate read buffer
-	_b = malloc(ptrsize * 256);
+	b = malloc(ptrsize * 256);
 
 	// read pointers
 	fseek(fp, 0L, SEEK_SET);
-	fread(_b, 256, ptrsize, fp);
+	fread(b, 256, ptrsize, fp);
 
 	// allocate pointers buffer
 	archive->fileptr[disk] = calloc(filecnt, sizeof(int));
 
 	// store pointers
 	for (int i = 0; i < filecnt - 1; i++) {
-		*(archive->fileptr[disk] + i) = (LittleEndian_get3B(_b, i * 3 + 3) * 256);
+		*(archive->fileptr[disk] + i) = (LittleEndian_get3B(b, i * 3 + 3) * 256);
 	}
 
-	free(_b);
+	free(b);
 	return;
 }
 
