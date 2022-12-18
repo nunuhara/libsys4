@@ -270,7 +270,7 @@ struct instruction instructions[NR_OPCODES] = {
         TODO ( SP_DEC,         0, (),                        (T_PAGE),                   () ),
         OP   ( ENDFUNC,        1, (T_FUNC),                  (),                         () ),
         OP   ( R_EQUALE,       0, (),                        (T_PAGE, T_VAR, T_PAGE, T_VAR), (T_INT) ),
-        TODO ( R_NOTE,         0, (),                        (),                         () ),
+        OP   ( R_NOTE,         0, (),                        (T_PAGE, T_VAR, T_PAGE, T_VAR), (T_INT) ),
         OP   ( SH_LOCALCREATE, 2, (T_LOCAL, T_STRUCT),       (),                         () ),
         OP   ( SH_LOCALDELETE, 1, (T_LOCAL),                 (),                         () ),
         OP   ( STOI,           0, (),                        (T_STRING), (T_INT) ),
