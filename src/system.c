@@ -69,13 +69,13 @@ mem_alloc void *xrealloc_array(void *dst, size_t old_nmemb, size_t new_nmemb, si
 	return dst;
 }
 
-noreturn void sys_verror(const char *fmt, va_list ap)
+_Noreturn void sys_verror(const char *fmt, va_list ap)
 {
 	vfprintf(stderr, fmt, ap);
 	sys_exit(1);
 }
 
-noreturn void sys_error(const char *fmt, ...)
+_Noreturn void sys_error(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
@@ -112,7 +112,7 @@ void sys_message(const char *fmt, ...)
 	fflush(stdout);
 }
 
-noreturn void sys_exit(int code)
+_Noreturn void sys_exit(int code)
 {
 	// TODO: cleanup
 	exit(code);

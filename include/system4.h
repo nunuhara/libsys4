@@ -28,9 +28,7 @@
 #define const_pure __attribute__((const))
 #define mem_alloc __attribute__((malloc))
 #ifdef __cplusplus
-#define noreturn [[ noreturn ]]
-#else
-#define noreturn _Noreturn
+#define _Noreturn [[ noreturn ]]
 #endif
 #define possibly_unused __attribute__((unused))
 #define warn_unused __attribute__((warn_unused_result))
@@ -47,13 +45,13 @@
 
 extern bool sys_silent;
 extern void (*sys_error_handler)(const char *msg);
-noreturn void sys_verror(const char *fmt, va_list ap);
-noreturn void sys_error(const char *fmt, ...);
+_Noreturn void sys_verror(const char *fmt, va_list ap);
+_Noreturn void sys_error(const char *fmt, ...);
 void sys_vwarning(const char *fmt, va_list ap);
 void sys_warning(const char *fmt, ...);
 void sys_message(const char *fmt, ...);
 
-noreturn void sys_exit(int code);
+_Noreturn void sys_exit(int code);
 
 #define xmalloc(size) _xmalloc(size, __func__)
 mem_alloc void *_xmalloc(size_t size, const char *func);
