@@ -71,6 +71,11 @@ mem_alloc void *xrealloc_array(void *dst, size_t old_nmemb, size_t new_nmemb, si
 
 _Noreturn void sys_verror(const char *fmt, va_list ap)
 {
+	if (sys_error_handler) {
+		char msg[4096];
+		vsnprintf(msg, 4096, fmt, ap);
+		sys_error_handler(msg);
+	}
 	vfprintf(stderr, fmt, ap);
 	sys_exit(1);
 }
@@ -79,11 +84,6 @@ _Noreturn void sys_error(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	if (sys_error_handler) {
-		char msg[4096];
-		vsnprintf(msg, 4096, fmt, ap);
-		sys_error_handler(msg);
-	}
 	sys_verror(fmt, ap);
 }
 
