@@ -24,6 +24,7 @@
 #include "system4/cg.h"
 #include "system4/dcf.h"
 #include "system4/qnt.h"
+#include "system4/string.h"
 #include "system4/utfsjis.h"
 #include <zlib.h>
 
@@ -162,7 +163,7 @@ void dcf_blit(struct cg *base, struct cg *diff, int x, int y, int w, int h)
 void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, size_t chunk_map_size)
 {
 	if (base->metrics.w != diff->metrics.w) {
-		WARNING("DCF base CG width differs");
+		WARNING("DCF base CG width differs: %u / %u", base->metrics.w, diff->metrics.w);
 		return;
 	}
 
@@ -194,16 +195,15 @@ void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, 
 
 static struct cg *dcf_get_base_cg(const char *name, struct archive *ar)
 {
-	char *basename = sjis2utf(name, 0);
-	char *dot = strrchr(basename, '.');
+	struct string *basename = (ar->conv ? ar->conv : make_string)(name, strlen(name));
+	char *dot = strrchr(basename->text, '.');
 	if (dot)
 		*dot = '\0';
 
-	struct archive_data *data = archive_get_by_basename(ar, basename);
-	free(basename);
+	struct archive_data *data = archive_get_by_basename(ar, basename->text);
+	free_string(basename);
 	if (!data)
 		return NULL;
-
 	struct cg *cg = cg_load_data(data);
 	archive_free_data(data);
 	return cg;

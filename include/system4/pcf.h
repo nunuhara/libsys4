@@ -19,6 +19,6 @@
 
 bool pcf_checkfmt(const uint8_t *data);
 bool pcf_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *dst);
-void pcf_extract(const uint8_t *data, size_t size, struct cg *cg);
+bool pcf_extract(const uint8_t *data, size_t size, struct cg *cg);
 
 #endif // SYSTEM4_PCF_H

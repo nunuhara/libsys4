@@ -35,6 +35,7 @@ enum {
 struct archive {
 	bool mmapped;
 	struct archive_ops *ops;
+	struct string *(*conv)(const char*,size_t);
 };
 
 struct archive_ops {

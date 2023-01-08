@@ -374,6 +374,7 @@ struct afa_archive *afa_open_conv(const char *file, int flags, int *error,
 	}
 	ar->filename = strdup(file);
 	ar->ar.ops = &afa_archive_ops;
+	ar->ar.conv = conv;
 	return ar;
 exit_err:
 	free(ar);

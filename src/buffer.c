@@ -105,6 +105,13 @@ char *buffer_strdata(struct buffer *r)
 	return (char*)r->buf + r->index;
 }
 
+bool buffer_check_bytes(struct buffer *r, const char *data, size_t n)
+{
+	bool eq = buffer_remaining(r) >= n && !strncmp(buffer_strdata(r), data, n);
+	buffer_skip(r, n);
+	return eq;
+}
+
 static void alloc_buffer(struct buffer *b, size_t size)
 {
 	if (b->index + size < b->size)
