@@ -135,6 +135,16 @@ void *file_read(const char *path, size_t *len_out)
 	long len;
 	uint8_t *buf;
 
+	ustat s;
+	if (stat_utf8(path, &s) < 0) {
+		WARNING("stat(\"%s\"): %s", path, strerror(errno));
+		return NULL;
+	}
+	if (!S_ISREG(s.st_mode)) {
+		WARNING("'%s' is not a regular file", path);
+		return NULL;
+	}
+
 	if (!(fp = file_open_utf8(path, "rb")))
 		return NULL;
 
