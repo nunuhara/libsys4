@@ -18,6 +18,7 @@
 #define SYSTEM4_BUFFER_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 
 struct buffer {

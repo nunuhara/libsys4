@@ -137,7 +137,6 @@ void *file_read(const char *path, size_t *len_out)
 
 	ustat s;
 	if (stat_utf8(path, &s) < 0) {
-		WARNING("stat(\"%s\"): %s", path, strerror(errno));
 		return NULL;
 	}
 	if (!S_ISREG(s.st_mode)) {
