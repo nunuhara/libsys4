@@ -44,7 +44,6 @@ int string_to_integer(struct string *s);
 struct string *float_to_string(float f, int precision);
 struct string *string_concatenate(const struct string *a, const struct string *b);
 struct string *string_copy(const struct string *s, int index, int len);
-struct string *string_format(struct string *fmt, union vm_value arg);
 
 // mutators
 void string_append(struct string **a, const struct string *b);
