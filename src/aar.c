@@ -26,6 +26,7 @@
 #include "system4.h"
 #include "system4/aar.h"
 #include "system4/archive.h"
+#include "system4/file.h"
 #include "system4/hashtable.h"
 #include "system4/utfsjis.h"
 
@@ -300,7 +301,7 @@ struct aar_archive *aar_open(const char *file, int flags, int *error)
 	FILE *fp;
 	struct aar_archive *ar = xcalloc(1, sizeof(struct aar_archive));
 
-	if (!(fp = fopen(file, "rb"))) {
+	if (!(fp = file_open_utf8(file, "rb"))) {
 		WARNING("fopen failed: %s", strerror(errno));
 		*error = ARCHIVE_FILE_ERROR;
 		goto exit_err;
