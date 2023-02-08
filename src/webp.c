@@ -86,6 +86,10 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 
 	// FIXME: possible infinite recursion on broken/malicious ALD
 	struct cg *base_cg = cg_load(ar, base-1);
+	if (!base_cg) {
+		WARNING("failed to load webp base CG");
+		return;
+	}
 	if (base_cg->metrics.w != cg->metrics.w || base_cg->metrics.h != cg->metrics.h) {
 		WARNING("webp base CG dimensions don't match: (%d,%d) / (%d,%d)",
 		        base_cg->metrics.w, base_cg->metrics.h, cg->metrics.w, cg->metrics.h);
