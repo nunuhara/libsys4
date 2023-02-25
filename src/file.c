@@ -22,7 +22,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
-#include <libgen.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include "system4.h"
@@ -31,7 +30,11 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include <direct.h>
+#else
+#include <libgen.h>
+#endif
 
+#ifdef _WIN32
 static wchar_t *utf8_to_wchar(const char *str)
 {
 	int nr_wchars = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
@@ -96,6 +99,56 @@ FILE *file_open_utf8(const char *path, const char *mode)
 	return f;
 }
 
+static inline bool is_path_separator(char c)
+{
+	return c == '/' || c == '\\';
+}
+
+char *path_dirname(const char *path)
+{
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+
+	char *s = (isalpha(buf[0]) && buf[1] == ':') ? buf + 2 : buf;
+	if (!*s)
+		return ".";
+
+	int i = strlen(s) - 1;
+	if (is_path_separator(s[i])) {
+		if (!i)
+			return buf;
+		i--;
+	}
+	while (!is_path_separator(s[i])) {
+		if (!i) {
+			strcpy(s, ".");
+			return buf;
+		}
+		i--;
+	}
+	if (i && is_path_separator(s[i]))
+		i--;
+	s[i+1] = '\0';
+	return buf;
+}
+
+char *path_basename(const char *path)
+{
+	if (isalpha(path[0]) && path[1] == ':')
+		path += 2;
+	if (!*path)
+		return ".";
+
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+	int i = strlen(buf) - 1;
+	if (i && is_path_separator(buf[i]))
+		buf[i--] = '\0';
+	while (i && !is_path_separator(buf[i-1]))
+		i--;
+	return buf + i;
+}
+
 #else
 
 #define make_dir(path, mode) mkdir(path, mode)
@@ -126,6 +179,20 @@ int stat_utf8(const char *path, ustat *st)
 FILE *file_open_utf8(const char *path, const char *mode)
 {
 	return fopen(path, mode);
+}
+
+char *path_dirname(const char *path)
+{
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+	return dirname(buf);
+}
+
+char *path_basename(const char *path)
+{
+	static char buf[PATH_MAX];
+	strncpy(buf, path, PATH_MAX-1);
+	return basename(buf);
 }
 #endif
 
@@ -201,20 +268,6 @@ bool file_exists(const char *path)
 #else
 	return access(path, F_OK) != -1;
 #endif
-}
-
-char *path_dirname(const char *path)
-{
-	static char buf[PATH_MAX];
-	strncpy(buf, path, PATH_MAX-1);
-	return dirname(buf);
-}
-
-char *path_basename(const char *path)
-{
-	static char buf[PATH_MAX];
-	strncpy(buf, path, PATH_MAX-1);
-	return basename(buf);
 }
 
 char *path_join(const char *dir, const char *base)
