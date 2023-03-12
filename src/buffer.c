@@ -60,6 +60,21 @@ float buffer_read_float(struct buffer *r)
 	return v.f;
 }
 
+struct string *buffer_read_string(struct buffer *r)
+{
+	int len = strlen(buffer_strdata(r));
+	struct string *s = make_string(buffer_strdata(r), len);
+	buffer_skip(r, len + 1);
+	return s;
+}
+
+char *buffer_skip_string(struct buffer *r)
+{
+	char *s = buffer_strdata(r);
+	buffer_skip(r, strlen(s) + 1);
+	return s;
+}
+
 struct string *buffer_read_pascal_string(struct buffer *r)
 {
 	int32_t len = buffer_read_int32(r);
@@ -98,11 +113,6 @@ void buffer_skip(struct buffer *r, size_t off)
 size_t buffer_remaining(struct buffer *r)
 {
 	return r->size - r->index;
-}
-
-char *buffer_strdata(struct buffer *r)
-{
-	return (char*)r->buf + r->index;
 }
 
 bool buffer_check_bytes(struct buffer *r, const char *data, size_t n)
@@ -177,6 +187,11 @@ void buffer_write_string(struct buffer *b, struct string *s)
 void buffer_write_cstring(struct buffer *b, const char *s)
 {
 	buffer_write_bytes(b, (uint8_t*)s, strlen(s));
+}
+
+void buffer_write_cstringz(struct buffer *b, const char *s)
+{
+	buffer_write_bytes(b, (uint8_t*)s, strlen(s)+1);
 }
 
 void buffer_write_pascal_cstring(struct buffer *b, const char *s)
