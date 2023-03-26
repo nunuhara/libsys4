@@ -374,7 +374,7 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 static size_t skip_int32(struct buffer *out)
 {
 	size_t loc = out->index;
-	buffer_skip(out, 4);
+	buffer_write_int32(out, 0);
 	return loc;
 }
 
