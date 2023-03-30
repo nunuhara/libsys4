@@ -55,14 +55,18 @@ struct gsave {
 	char *group;  // version 5+
 
 	int32_t nr_records;
+	int32_t cap_records;
 	struct gsave_record *records;
 	int32_t nr_globals;
 	struct gsave_global *globals;
 	int32_t nr_strings;
+	int32_t cap_strings;
 	struct string **strings;
 	int32_t nr_arrays;
+	int32_t cap_arrays;
 	struct gsave_array *arrays;
 	int32_t nr_keyvals;
+	int32_t cap_keyvals;
 	struct gsave_keyval *keyvals;
 };
 
