@@ -484,7 +484,10 @@ int32_t gsave_add_globals_record(struct gsave *gs, int nr_globals)
 int32_t gsave_add_record(struct gsave *gs, struct gsave_record *rec)
 {
 	int32_t n = gs->nr_records++;
-	gs->records = xrealloc_array(gs->records, n, n+1, sizeof(struct gsave_record));
+	if (gs->nr_records > gs->cap_records) {
+		gs->cap_records = max(gs->nr_records, gs->cap_records * 2);
+		gs->records = xrealloc_array(gs->records, n, gs->cap_records, sizeof(struct gsave_record));
+	}
 	gs->records[n] = *rec;
 	return n;
 }
@@ -492,7 +495,10 @@ int32_t gsave_add_record(struct gsave *gs, struct gsave_record *rec)
 int32_t gsave_add_string(struct gsave *gs, struct string *s)
 {
 	int n = gs->nr_strings++;
-	gs->strings = xrealloc_array(gs->strings, n, n+1, sizeof(struct string*));
+	if (gs->nr_strings > gs->cap_strings) {
+		gs->cap_strings = max(gs->nr_strings, gs->cap_strings * 2);
+		gs->strings = xrealloc_array(gs->strings, n, gs->cap_strings, sizeof(struct string*));
+	}
 	gs->strings[n] = string_ref(s);
 	return n;
 }
@@ -500,7 +506,10 @@ int32_t gsave_add_string(struct gsave *gs, struct string *s)
 int32_t gsave_add_array(struct gsave *gs, struct gsave_array *array)
 {
 	int n = gs->nr_arrays++;
-	gs->arrays = xrealloc_array(gs->arrays, n, n+1, sizeof(struct gsave_array));
+	if (gs->nr_arrays > gs->cap_arrays) {
+		gs->cap_arrays = max(gs->nr_arrays, gs->cap_arrays * 2);
+		gs->arrays = xrealloc_array(gs->arrays, n, gs->cap_arrays, sizeof(struct gsave_array));
+	}
 	gs->arrays[n] = *array;
 	return n;
 }
@@ -508,7 +517,10 @@ int32_t gsave_add_array(struct gsave *gs, struct gsave_array *array)
 int32_t gsave_add_keyval(struct gsave *gs, struct gsave_keyval *kv)
 {
 	int n = gs->nr_keyvals++;
-	gs->keyvals = xrealloc_array(gs->keyvals, n, n+1, sizeof(struct gsave_keyval));
+	if (gs->nr_keyvals > gs->cap_keyvals) {
+		gs->cap_keyvals = max(gs->nr_keyvals, gs->cap_keyvals * 2);
+		gs->keyvals = xrealloc_array(gs->keyvals, n, gs->cap_keyvals, sizeof(struct gsave_keyval));
+	}
 	gs->keyvals[n] = *kv;
 	return n;
 }
