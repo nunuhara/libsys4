@@ -1356,6 +1356,9 @@ struct ain *ain_open_conv(const char *path, char*(*conv)(const char*), int *erro
 		*error = AIN_INVALID;
 		goto err;
 	}
+	if (ain->MSG1.present && ain->version == 6) {
+		ain->minor_version = max(ain->minor_version, 1);
+	}
 	distribute_initvals(ain);
 
 	free(buf);
@@ -1386,8 +1389,8 @@ struct ain *ain_new(int major_version, int minor_version)
 	//      We can't tell from the ain version alone whether MSG0 or MSG1
 	//      should be used since the ain version did not increase with
 	//      this change, but v7+ at least should always use MSG1.
-	ain->MSG0.present = major_version < 7;
-	ain->MSG1.present = !ain->MSG0.present;
+	ain->MSG1.present = (major_version == 6 && minor_version > 0) || major_version > 6;
+	ain->MSG0.present = !ain->MSG1.present;
 	ain->MAIN.present = true;
 	ain->MSGF.present = major_version < 12;
 	ain->HLL0.present = true;
