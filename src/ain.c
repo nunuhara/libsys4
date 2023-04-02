@@ -618,6 +618,8 @@ char *ain_strtype_d(struct ain *ain, struct ain_type *v)
 		if (v->struc == -1 || !ain || v->struc >= ain->nr_enums)
 			return strdup("ref enum");
 		return type_sprintf("ref %s", ain->enums[v->struc].name);
+	case AIN_HLL_FUNC_71:
+		return strdup("hll_func_71");
 	case AIN_HLL_FUNC:
 		return strdup("hll_func");
 	case AIN_IFACE_WRAP:

@@ -73,6 +73,7 @@ enum ain_data_type {
 	AIN_ARRAY_DELEGATE = 66,
 	AIN_REF_DELEGATE = 67,
 	AIN_REF_ARRAY_DELEGATE = 69,
+	AIN_HLL_FUNC_71 = 71, // used in Ixseal Array HLL
 	AIN_HLL_PARAM = 74,
 	AIN_REF_HLL_PARAM = 75,
 	AIN_ARRAY = 79,
