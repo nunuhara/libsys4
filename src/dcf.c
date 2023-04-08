@@ -195,13 +195,12 @@ void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, 
 
 static struct cg *dcf_get_base_cg(const char *name, struct archive *ar)
 {
-	struct string *basename = (ar->conv ? ar->conv : make_string)(name, strlen(name));
-	char *dot = strrchr(basename->text, '.');
-	if (dot)
-		*dot = '\0';
+	struct string *tmp = (ar->conv ? ar->conv : make_string)(name, strlen(name));
+	char *basename = archive_basename(tmp->text);
+	free_string(tmp);
 
-	struct archive_data *data = archive_get_by_basename(ar, basename->text);
-	free_string(basename);
+	struct archive_data *data = archive_get_by_basename(ar, basename);
+	free(basename);
 	if (!data)
 		return NULL;
 	struct cg *cg = cg_load_data(data);

@@ -167,4 +167,6 @@ static inline void archive_free(struct archive *ar)
 
 struct archive_data *_archive_make_descriptor(struct archive *ar, char *name, int no, size_t size);
 
+char *archive_basename(const char *name);
+
 #endif /* SYSTEM4_ARCHIVE_H */

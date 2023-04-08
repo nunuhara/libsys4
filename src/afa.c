@@ -71,15 +71,16 @@ static struct afa_entry *afa_get_entry_by_basename(struct afa_archive *ar, const
 	if (!ar->basename_index) {
 		ar->basename_index = ht_create(ar->nr_files * 3 / 2);
 		for (unsigned i = 0; i < ar->nr_files; i++) {
-			char *basename = xstrdup(ar->files[i].name->text);
-			char *dot = strrchr(basename, '.');
-			if (dot)
-				*dot = '\0';
+			char *basename = archive_basename(ar->files[i].name->text);
 			ht_put(ar->basename_index, basename, &ar->files[i]);
 			free(basename);
 		}
 	}
-	return ht_get(ar->basename_index, name, NULL);
+
+	char *basename = archive_basename(name);
+	struct afa_entry *entry = ht_get(ar->basename_index, basename, NULL);
+	free(basename);
+	return entry;
 }
 
 static struct afa_entry *afa_get_entry_by_number(struct afa_archive *ar, int no)

@@ -18,6 +18,7 @@
 #include <string.h>
 #include "system4.h"
 #include "system4/ald.h"
+#include "system4/utfsjis.h"
 
 static const char *errtab[ARCHIVE_MAX_ERROR] = {
 	[ARCHIVE_SUCCESS]           = "Success",
@@ -58,4 +59,15 @@ struct archive_data *_archive_copy_descriptor(struct archive_data *src)
 	struct archive_data *dst = xmalloc(sizeof(struct archive_data));
 	_archive_copy_descriptor_ip(dst, src);
 	return dst;
+}
+
+// FIXME?: assumes ASCII-compatible encoding
+char *archive_basename(const char *name)
+{
+	char *basename = xstrdup(name);
+	char *dot = strrchr(basename, '.');
+	if (dot)
+		*dot = '\0';
+	sjis_toupper(basename);
+	return basename;
 }
