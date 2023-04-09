@@ -34,6 +34,8 @@
 typedef struct string *(*string_conv_fun)(const char*,size_t);
 
 static bool afa_exists(struct archive *ar, int no);
+static bool afa_exists_by_name(struct archive *ar, const char *name, int *id_out);
+static bool afa_exists_by_basename(struct archive *ar, const char *name, int *id_out);
 static struct archive_data *afa_get(struct archive *ar, int no);
 static struct archive_data *afa_get_by_name(struct archive *ar, const char *name);
 static struct archive_data *afa_get_by_basename(struct archive *ar, const char *name);
@@ -44,6 +46,8 @@ static void afa_free(struct archive *ar);
 
 struct archive_ops afa_archive_ops = {
 	.exists = afa_exists,
+	.exists_by_name = afa_exists_by_name,
+	.exists_by_basename = afa_exists_by_basename,
 	.get = afa_get,
 	.get_by_name = afa_get_by_name,
 	.get_by_basename = afa_get_by_basename,
@@ -102,6 +106,28 @@ static bool afa_exists(struct archive *_ar, int no)
 {
 	struct afa_archive *ar = (struct afa_archive*)_ar;
 	return !!afa_get_entry_by_number(ar, no);
+}
+
+static bool afa_exists_by_name(struct archive *_ar, const char *name, int *id_out)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	struct afa_entry *e = afa_get_entry_by_name(ar, name);
+	if (!e)
+		return false;
+	if (id_out)
+		*id_out = e->no;
+	return true;
+}
+
+static bool afa_exists_by_basename(struct archive *_ar, const char *name, int *id_out)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	struct afa_entry *e = afa_get_entry_by_basename(ar, name);
+	if (!e)
+		return false;
+	if (id_out)
+		*id_out = e->no;
+	return true;
 }
 
 static bool afa_load_file(struct archive_data *data)

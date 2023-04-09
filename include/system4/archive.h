@@ -40,7 +40,8 @@ struct archive {
 
 struct archive_ops {
 	bool (*exists)(struct archive *ar, int no);
-	bool (*exists_by_name)(struct archive *ar, const char *name);
+	bool (*exists_by_name)(struct archive *ar, const char *name, int *id_out);
+	bool (*exists_by_basename)(struct archive *ar, const char *name, int *id_out);
 	struct archive_data *(*get)(struct archive *ar, int no);
 	struct archive_data *(*get_by_name)(struct archive *ar, const char *name);
 	struct archive_data *(*get_by_basename)(struct archive *ar, const char *name);
@@ -73,9 +74,20 @@ static inline bool archive_exists(struct archive *ar, int no)
 	return ar->ops->exists ? ar->ops->exists(ar, no) : false;
 }
 
-static inline bool archive_exists_by_name(struct archive *ar, const char *name)
+/*
+ * Check if data exists in an archive by name.
+ */
+static inline bool archive_exists_by_name(struct archive *ar, const char *name, int *id_out)
 {
-	return ar->ops->exists_by_name ? ar->ops->exists_by_name(ar, name) : false;
+	return ar->ops->exists_by_name ? ar->ops->exists_by_name(ar, name, id_out) : false;
+}
+
+/*
+ * Check if data exists in an archive by basename (i.e. ignoring file extension and case).
+ */
+static inline bool archive_exists_by_basename(struct archive *ar, const char *name, int *id_out)
+{
+	return ar->ops->exists_by_basename ? ar->ops->exists_by_basename(ar, name, id_out) : false;
 }
 
 /*
@@ -95,7 +107,7 @@ static inline struct archive_data *archive_get_by_name(struct archive *ar, const
 }
 
 /*
- * Retrive a file from an archive by basename (i.e. ignoring file extension).
+ * Retrive a file from an archive by basename (i.e. ignoring file extension and case).
  */
 static inline struct archive_data *archive_get_by_basename(struct archive *ar, const char *name)
 {
