@@ -244,8 +244,13 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	}
 	entry->name->size = name_len; // fix length
 
-	if (ar->version == 1)
-		entry->no = buffer_read_int32(in) - 1;
+	if (ar->version == 1) {
+		// XXX: Oyako Rankan is AFAv1 but all IDs are 0, which breaks load_file.
+		//      We revert to using sequential indices in this case
+		int32_t no = buffer_read_int32(in) - 1;
+		if (no >= 0)
+			entry->no = no;
+	}
 	entry->unknown0 = buffer_read_int32(in);
 	entry->unknown1 = buffer_read_int32(in);
 
