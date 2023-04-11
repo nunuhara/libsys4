@@ -2,11 +2,16 @@ project('libsys4', 'c',
         default_options : ['c_std=c11', 'default_library=static'])
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 
-zlib = dependency('zlib')
+static_libs = false
+if host_machine.system() == 'windows'
+    static_libs = true
+endif
+
+zlib = dependency('zlib', static : static_libs)
 libm = meson.get_compiler('c').find_library('m', required: false)
-tj = dependency('libturbojpeg')
-webp = dependency('libwebp')
-png = dependency('libpng')
+tj = dependency('libturbojpeg', static : static_libs)
+webp = dependency('libwebp', static : static_libs)
+png = dependency('libpng', static : static_libs)
 
 flex = find_program('flex')
 bison = find_program('bison')
