@@ -424,7 +424,7 @@ enum savefile_error gsave_write(struct gsave *gs, FILE *out, bool encrypt, int c
 	// strings
 	buffer_write_int32_at(&w, strings_offset_loc, w.index);
 	for (int i = 0; i < gs->nr_strings; i++) {
-		buffer_write_string(&w, gs->strings[i]);
+		buffer_write_cstringz(&w, gs->strings[i]->text);
 	}
 
 	// arrays
