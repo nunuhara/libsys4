@@ -101,15 +101,20 @@ void sys_warning(const char *fmt, ...)
 	va_end(ap);
 }
 
-void sys_message(const char *fmt, ...)
+void sys_vmessage(const char *fmt, va_list ap)
 {
 	if (sys_silent)
 		return;
+	vprintf(fmt, ap);
+	fflush(stdout);
+}
+
+void sys_message(const char *fmt, ...)
+{
 	va_list ap;
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	sys_vmessage(fmt, ap);
 	va_end(ap);
-	fflush(stdout);
 }
 
 _Noreturn void sys_exit(int code)

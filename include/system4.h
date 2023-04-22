@@ -49,6 +49,7 @@ _Noreturn void sys_verror(const char *fmt, va_list ap);
 _Noreturn void sys_error(const char *fmt, ...);
 void sys_vwarning(const char *fmt, va_list ap);
 void sys_warning(const char *fmt, ...);
+void sys_vmessage(const char *fmt, va_list ap);
 void sys_message(const char *fmt, ...);
 
 _Noreturn void sys_exit(int code);
