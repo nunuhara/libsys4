@@ -124,4 +124,116 @@ int32_t gsave_add_string(struct gsave *gs, struct string *s);
 int32_t gsave_add_array(struct gsave *gs, struct gsave_array *array);
 int32_t gsave_add_keyval(struct gsave *gs, struct gsave_keyval *kv);
 
+struct rsave_return_record {
+	int32_t return_addr;  // -1 for the dummy record at the callstack bottom
+	char *caller_func;
+	int32_t local_addr;  // offset from the function address
+	int32_t crc;
+};
+
+// Save data structure of system.ResumeSave
+struct rsave {
+	int32_t version;
+	char *key;
+	int32_t nr_comments;  // version 7+
+	char **comments;
+	struct rsave_return_record ip;
+	int32_t uk1;  // always zero
+	int32_t stack_size;
+	int32_t *stack;
+	int32_t nr_call_frames;
+	struct rsave_call_frame *call_frames;
+	int32_t nr_return_records;
+	struct rsave_return_record *return_records;
+	int32_t uk2;  // always zero
+	int32_t uk3;  // always zero
+	int32_t uk4;  // always zero
+	int32_t nr_heap_objs;
+	void **heap;  // pointers to `struct rsave_heap_xxx` or rsave_null
+	int32_t nr_func_names;  // version 6+
+	char **func_names;
+};
+
+enum rsave_frame_type {
+	RSAVE_ENTRY_POINT = 0,
+	RSAVE_FUNCTION_CALL = 1,
+	RSAVE_METHOD_CALL = 2,
+	RSAVE_CALL_STACK_BOTTOM = 4,
+};
+
+struct rsave_call_frame {
+	enum rsave_frame_type type;
+	int32_t local_ptr;
+	int32_t struct_ptr;  // used if type == RSAVE_METHOD_CALL
+};
+
+struct rsave_symbol {
+	char *name;  // version 6+
+	int32_t id;  // version 4
+};
+
+enum rsave_heap_tag {
+	RSAVE_GLOBALS = 0,
+	RSAVE_LOCALS = 1,
+	RSAVE_STRING = 2,
+	RSAVE_ARRAY = 3,
+	RSAVE_STRUCT = 4,
+	RSAVE_NULL = -1
+};
+
+struct rsave_heap_frame {
+	enum rsave_heap_tag tag;  // RSAVE_GLOBALS or RSAVE_LOCALS
+	int32_t ref;
+	struct rsave_symbol func;
+	int32_t nr_types;
+	int32_t *types;
+	int32_t nr_slots;
+	int32_t slots[];
+};
+
+struct rsave_heap_string {
+	enum rsave_heap_tag tag;  // RSAVE_STRING
+	int32_t ref;
+	int32_t uk;   // 0 or (very rarely) 1
+	int32_t len;  // including null terminator
+	char text[];
+};
+
+struct rsave_heap_array {
+	enum rsave_heap_tag tag;  // RSAVE_ARRAY
+	int32_t ref;
+	int32_t rank_minus_1;  // -1 if null
+	enum ain_data_type data_type;
+	struct rsave_symbol struct_type;
+	int32_t root_rank;  // -1 if null
+	// This is usually `nr_slots > 0 ? 1 : 0`, but is 1 when the size is reduced
+	// to 0 by Array.Erase().
+	int32_t is_not_empty;
+	int32_t nr_slots;
+	int32_t slots[];
+};
+
+struct rsave_heap_struct {
+	enum rsave_heap_tag tag;  // RSAVE_STRUCT
+	int32_t ref;
+	struct rsave_symbol ctor;
+	struct rsave_symbol dtor;
+	int32_t uk;   // always zero?
+	struct rsave_symbol struct_type;
+	int32_t nr_types;
+	int32_t *types;
+	int32_t nr_slots;
+	int32_t slots[];
+};
+
+struct rsave_heap_null {
+	enum rsave_heap_tag tag;  // RSAVE_NULL
+};
+extern struct rsave_heap_null * const rsave_null;
+
+void rsave_free(struct rsave *rs);
+struct rsave *rsave_read(const char *path, enum savefile_error *error);
+enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs);
+enum savefile_error rsave_write(struct rsave *rs, FILE *out, bool encrypt, int compression_level);
+
 #endif /* SYSTEM4_SAVEFILE_H */
