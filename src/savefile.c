@@ -30,6 +30,9 @@
 #include "system4/savefile.h"
 #include "system4/string.h"
 
+static struct rsave_heap_null rsave_null_singleton = { RSAVE_NULL };
+struct rsave_heap_null * const rsave_null = &rsave_null_singleton;
+
 static const char *errtab[SAVEFILE_MAX_ERROR] = {
 	[SAVEFILE_SUCCESS]            = "Success",
 	[SAVEFILE_INVALID_SIGNATURE]  = "Not a System4 save file",
@@ -523,4 +526,466 @@ int32_t gsave_add_keyval(struct gsave *gs, struct gsave_keyval *kv)
 	}
 	gs->keyvals[n] = *kv;
 	return n;
+}
+
+static void rsave_free_frame(struct rsave_heap_frame *f)
+{
+	free(f->func.name);
+	free(f->types);
+	free(f);
+}
+
+static void rsave_free_string(struct rsave_heap_string *s)
+{
+	free(s);
+}
+
+static void rsave_free_array(struct rsave_heap_array *a)
+{
+	free(a->struct_type.name);
+	free(a);
+}
+
+static void rsave_free_struct(struct rsave_heap_struct *s)
+{
+	free(s->ctor.name);
+	free(s->dtor.name);
+	free(s->struct_type.name);
+	free(s->types);
+	free(s);
+}
+
+void rsave_free(struct rsave *rs)
+{
+	free(rs->key);
+	for (int i = 0; i < rs->nr_comments; i++)
+		free(rs->comments[i]);
+	free(rs->comments);
+	free(rs->ip.caller_func);
+	free(rs->stack);
+	free(rs->call_frames);
+	for (int i = 0; i < rs->nr_return_records; i++)
+		free(rs->return_records[i].caller_func);
+	free(rs->return_records);
+	for (int i = 0; i < rs->nr_heap_objs; i++) {
+		enum rsave_heap_tag *tag = rs->heap[i];
+		switch (*tag) {
+		case RSAVE_GLOBALS:
+		case RSAVE_LOCALS:
+			rsave_free_frame(rs->heap[i]);
+			break;
+		case RSAVE_STRING:
+			rsave_free_string(rs->heap[i]);
+			break;
+		case RSAVE_ARRAY:
+			rsave_free_array(rs->heap[i]);
+			break;
+		case RSAVE_STRUCT:
+			rsave_free_struct(rs->heap[i]);
+			break;
+		case RSAVE_NULL:
+			assert(rs->heap[i] == rsave_null);
+			break;
+		default:
+			ERROR("unknown rsave heap tag %d", *tag);
+		}
+	}
+	free(rs->heap);
+	for (int i = 0; i < rs->nr_func_names; i++)
+		free(rs->func_names[i]);
+	free(rs->func_names);
+	free(rs);
+}
+
+struct rsave *rsave_read(const char *path, enum savefile_error *error)
+{
+	struct savefile *save = savefile_read(path, error);
+	if (!save)
+		return NULL;
+
+	struct rsave *rs = xcalloc(1, sizeof(struct rsave));
+	*error = rsave_parse(save->buf, save->len, rs);
+	if (*error != SAVEFILE_SUCCESS) {
+		rsave_free(rs);
+		rs = NULL;
+	}
+	savefile_free(save);
+	return rs;
+}
+
+static int32_t *parse_int_array(struct buffer *r, int *num)
+{
+	int n = buffer_read_int32(r);
+	int32_t *buf = xcalloc(n, sizeof(int32_t));
+	for (int i = 0; i < n; i++)
+		buf[i] = buffer_read_int32(r);
+	*num = n;
+	return buf;
+}
+
+static char **parse_string_array(struct buffer *r, int *num)
+{
+	int n = buffer_read_int32(r);
+	char **strs = xcalloc(n, sizeof(char*));
+	for (int i = 0; i < n; i++)
+		strs[i] = strdup(buffer_skip_string(r));
+	*num = n;
+	return strs;
+}
+
+static struct rsave_symbol parse_rsave_symbol(struct buffer *r, int32_t version)
+{
+	if (version == 4)
+		return (struct rsave_symbol) { .id = buffer_read_int32(r) };
+	return (struct rsave_symbol) { .name = strdup(buffer_skip_string(r)) };
+}
+
+static struct rsave_call_frame *parse_call_frames(struct buffer *r, int *num)
+{
+	int32_t nr_local_ptrs, nr_frame_types, nr_struct_ptrs;
+	int32_t *local_ptrs = parse_int_array(r, &nr_local_ptrs);
+	int32_t *frame_types = parse_int_array(r, &nr_frame_types);
+	int32_t *struct_ptrs = parse_int_array(r, &nr_struct_ptrs);
+	if (nr_local_ptrs != nr_frame_types)
+		ERROR("unexpected number of local pointers");
+
+	struct rsave_call_frame *frames = xcalloc(nr_local_ptrs, sizeof(struct rsave_call_frame));
+	int32_t struct_ptr_index = 0;
+	for (int i = 0; i < nr_local_ptrs; i++) {
+		frames[i].type = frame_types[i];
+		frames[i].local_ptr = local_ptrs[i];
+		frames[i].struct_ptr = frame_types[i] == RSAVE_METHOD_CALL ?
+			struct_ptrs[struct_ptr_index++] : -1;
+	}
+	if (struct_ptr_index != nr_struct_ptrs)
+		ERROR("unexpected number of struct pointers");
+	free(local_ptrs);
+	free(frame_types);
+	free(struct_ptrs);
+	*num = nr_local_ptrs;
+	return frames;
+}
+
+static void parse_return_record(struct buffer *r, struct rsave_return_record *f)
+{
+	f->return_addr = buffer_read_int32(r);
+	if (f->return_addr == -1)
+		return;
+	f->caller_func = strdup(buffer_skip_string(r));
+	f->local_addr = buffer_read_int32(r);
+	f->crc = buffer_read_int32(r);
+}
+
+static struct rsave_heap_frame *parse_heap_frame(struct buffer *r, int32_t version, enum rsave_heap_tag tag)
+{
+	struct rsave_heap_frame f = { .tag = tag };
+	f.ref = buffer_read_int32(r);
+	if (version == 4) {
+		f.func.id = buffer_read_int32(r);
+	} else if (tag == RSAVE_GLOBALS) {
+		f.func.id = buffer_read_int32(r);
+		if (f.func.id != -1)
+			return NULL;
+	} else {
+		f.func.name = strdup(buffer_skip_string(r));
+	}
+
+	f.types = parse_int_array(r, &f.nr_types);
+	int slots_size = buffer_read_int32(r);
+	if (slots_size % sizeof(int32_t) != 0) {
+		free(f.func.name);
+		free(f.types);
+		return NULL;
+	}
+	f.nr_slots = slots_size / sizeof(int32_t);
+
+	struct rsave_heap_frame *obj = xmalloc(sizeof(struct rsave_heap_frame) + slots_size);
+	*obj = f;
+	for (int i = 0; i < f.nr_slots; i++)
+		obj->slots[i] = buffer_read_int32(r);
+	return obj;
+}
+
+static struct rsave_heap_string *parse_heap_string(struct buffer *r)
+{
+	struct rsave_heap_string s = { .tag = RSAVE_STRING };
+	s.ref = buffer_read_int32(r);
+	s.uk = buffer_read_int32(r);
+	if (s.uk != 0 && s.uk != 1)
+		ERROR("unexpected");
+	s.len = buffer_read_int32(r);
+	struct rsave_heap_string *obj = xmalloc(sizeof(struct rsave_heap_string) + s.len);
+	*obj = s;
+	buffer_read_bytes(r, (uint8_t *)obj->text, s.len);
+	return obj;
+}
+
+static struct rsave_heap_array *parse_heap_array(struct buffer *r, int32_t version)
+{
+	struct rsave_heap_array a = { .tag = RSAVE_ARRAY };
+	a.ref = buffer_read_int32(r);
+	a.rank_minus_1 = buffer_read_int32(r);
+	a.data_type = buffer_read_int32(r);
+	a.struct_type = parse_rsave_symbol(r, version);
+	a.root_rank = buffer_read_int32(r);
+	a.is_not_empty = buffer_read_int32(r);
+
+	int slots_size = buffer_read_int32(r);
+	if (slots_size % sizeof(int32_t) != 0) {
+		free(a.struct_type.name);
+		return NULL;
+	}
+	a.nr_slots = slots_size / sizeof(int32_t);
+	struct rsave_heap_array *obj = xmalloc(sizeof(struct rsave_heap_array) + slots_size);
+	*obj = a;
+	for (int i = 0; i < a.nr_slots; i++)
+		obj->slots[i] = buffer_read_int32(r);
+	return obj;
+}
+
+static struct rsave_heap_struct *parse_heap_struct(struct buffer *r, int32_t version)
+{
+	struct rsave_heap_struct s = { .tag = RSAVE_STRUCT };
+	s.ref = buffer_read_int32(r);
+	s.ctor = parse_rsave_symbol(r, version);
+	s.dtor = parse_rsave_symbol(r, version);
+	s.uk = buffer_read_int32(r);
+	if (s.uk != 0)
+		ERROR("unexpected");
+	s.struct_type = parse_rsave_symbol(r, version);
+	s.types = parse_int_array(r, &s.nr_types);
+	int slots_size = buffer_read_int32(r);
+	if (slots_size % sizeof(int32_t) != 0) {
+		free(s.ctor.name);
+		free(s.dtor.name);
+		free(s.struct_type.name);
+		free(s.types);
+		return NULL;
+	}
+	s.nr_slots = slots_size / sizeof(int32_t);
+	struct rsave_heap_struct *obj = xmalloc(sizeof(struct rsave_heap_struct) + slots_size);
+	*obj = s;
+	for (int i = 0; i < s.nr_slots; i++)
+		obj->slots[i] = buffer_read_int32(r);
+	return obj;
+}
+
+enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
+{
+	struct buffer r;
+	buffer_init(&r, buf, len);
+
+	if (strcmp(buffer_strdata(&r), "RSM"))
+		return SAVEFILE_INVALID_SIGNATURE;
+	buffer_skip(&r, 4);
+
+	rs->version = buffer_read_int32(&r);
+	if (rs->version != 4 && rs->version != 6 && rs->version != 7)
+		return SAVEFILE_UNSUPPORTED_FORMAT;
+	rs->key = strdup(buffer_skip_string(&r));
+	if (rs->version >= 7)
+		rs->comments = parse_string_array(&r, &rs->nr_comments);
+
+	parse_return_record(&r, &rs->ip);
+	rs->uk1 = buffer_read_int32(&r);
+	if (rs->uk1)
+		ERROR("unexpected");
+	rs->stack = parse_int_array(&r, &rs->stack_size);
+	rs->call_frames = parse_call_frames(&r, &rs->nr_call_frames);
+	rs->nr_return_records = buffer_read_int32(&r);
+	rs->return_records = xcalloc(rs->nr_return_records, sizeof(struct rsave_return_record));
+	for (int i = 0; i < rs->nr_return_records; i++)
+		parse_return_record(&r, &rs->return_records[i]);
+
+	rs->uk2 = buffer_read_int32(&r);
+	rs->uk3 = buffer_read_int32(&r);
+	rs->uk4 = buffer_read_int32(&r);
+	if (rs->uk2 || rs->uk3 || rs->uk4)
+		ERROR("unexpected");
+
+	rs->nr_heap_objs = buffer_read_int32(&r);
+	rs->heap = xcalloc(rs->nr_heap_objs, sizeof(void*));
+	for (int i = 0; i < rs->nr_heap_objs; i++) {
+		enum rsave_heap_tag tag = buffer_read_int32(&r);
+		switch (tag) {
+		case RSAVE_GLOBALS:
+		case RSAVE_LOCALS:
+			rs->heap[i] = parse_heap_frame(&r, rs->version, tag);
+			break;
+		case RSAVE_STRING:
+			rs->heap[i] = parse_heap_string(&r);
+			break;
+		case RSAVE_ARRAY:
+			rs->heap[i] = parse_heap_array(&r, rs->version);
+			break;
+		case RSAVE_STRUCT:
+			rs->heap[i] = parse_heap_struct(&r, rs->version);
+			break;
+		case RSAVE_NULL:
+			rs->heap[i] = rsave_null;
+			break;
+		default:
+			return SAVEFILE_INVALID;
+		}
+		if (!rs->heap[i])
+			return SAVEFILE_INVALID;
+	}
+
+	if (rs->version >= 6)
+		rs->func_names = parse_string_array(&r, &rs->nr_func_names);
+
+	if (buffer_remaining(&r) != 0)
+		return SAVEFILE_INVALID;
+	return SAVEFILE_SUCCESS;
+}
+
+static void write_rsave_symbol(struct buffer *w, struct rsave_symbol *sym)
+{
+	if (sym->name)
+		buffer_write_cstringz(w, sym->name);
+	else
+		buffer_write_int32(w, sym->id);
+}
+
+static void write_return_record(struct buffer *w, struct rsave_return_record *f)
+{
+	buffer_write_int32(w, f->return_addr);
+	if (f->return_addr == -1)
+		return;
+	buffer_write_cstringz(w, f->caller_func);
+	buffer_write_int32(w, f->local_addr);
+	buffer_write_int32(w, f->crc);
+}
+
+static void write_heap_frame(struct buffer *w, struct rsave_heap_frame *f)
+{
+	buffer_write_int32(w, f->tag);
+	buffer_write_int32(w, f->ref);
+	write_rsave_symbol(w, &f->func);
+	buffer_write_int32(w, f->nr_types);
+	for (int i = 0; i < f->nr_types; i++)
+		buffer_write_int32(w, f->types[i]);
+	buffer_write_int32(w, f->nr_slots * sizeof(int32_t));
+	for (int i = 0; i < f->nr_slots; i++)
+		buffer_write_int32(w, f->slots[i]);
+}
+
+static void write_heap_string(struct buffer *w, struct rsave_heap_string *s)
+{
+	buffer_write_int32(w, s->tag);
+	buffer_write_int32(w, s->ref);
+	buffer_write_int32(w, s->uk);
+	buffer_write_int32(w, s->len);
+	buffer_write_bytes(w, (uint8_t*)s->text, s->len);
+}
+
+static void write_heap_array(struct buffer *w, struct rsave_heap_array *a)
+{
+	buffer_write_int32(w, a->tag);
+	buffer_write_int32(w, a->ref);
+	buffer_write_int32(w, a->rank_minus_1);
+	buffer_write_int32(w, a->data_type);
+	write_rsave_symbol(w, &a->struct_type);
+	buffer_write_int32(w, a->root_rank);
+	buffer_write_int32(w, a->is_not_empty);
+	buffer_write_int32(w, a->nr_slots * sizeof(int32_t));
+	for (int i = 0; i < a->nr_slots; i++)
+		buffer_write_int32(w, a->slots[i]);
+}
+
+static void write_heap_struct(struct buffer *w, struct rsave_heap_struct *s)
+{
+	buffer_write_int32(w, s->tag);
+	buffer_write_int32(w, s->ref);
+	write_rsave_symbol(w, &s->ctor);
+	write_rsave_symbol(w, &s->dtor);
+	buffer_write_int32(w, s->uk);
+	write_rsave_symbol(w, &s->struct_type);
+	buffer_write_int32(w, s->nr_types);
+	for (int i = 0; i < s->nr_types; i++)
+		buffer_write_int32(w, s->types[i]);
+	buffer_write_int32(w, s->nr_slots * sizeof(int32_t));
+	for (int i = 0; i < s->nr_slots; i++)
+		buffer_write_int32(w, s->slots[i]);
+}
+
+enum savefile_error rsave_write(struct rsave *rs, FILE *out, bool encrypt, int compression_level)
+{
+	struct buffer w;
+	buffer_init(&w, NULL, 0);
+	buffer_write_cstringz(&w, "RSM");
+	buffer_write_int32(&w, rs->version);
+	buffer_write_cstringz(&w, rs->key);
+	if (rs->version >= 7) {
+		buffer_write_int32(&w, rs->nr_comments);
+		for (int i = 0; i < rs->nr_comments; i++)
+			buffer_write_cstringz(&w, rs->comments[i]);
+	}
+	write_return_record(&w, &rs->ip);
+	buffer_write_int32(&w, rs->uk1);
+	buffer_write_int32(&w, rs->stack_size);
+	for (int i = 0; i < rs->stack_size; i++)
+		buffer_write_int32(&w, rs->stack[i]);
+
+	buffer_write_int32(&w, rs->nr_call_frames);
+	for (int i = 0; i < rs->nr_call_frames; i++)
+		buffer_write_int32(&w, rs->call_frames[i].local_ptr);
+	buffer_write_int32(&w, rs->nr_call_frames);
+	for (int i = 0; i < rs->nr_call_frames; i++)
+		buffer_write_int32(&w, rs->call_frames[i].type);
+	size_t nr_struct_ptrs_loc = skip_int32(&w);
+	int32_t nr_struct_ptrs = 0;
+	for (int i = 0; i < rs->nr_call_frames; i++) {
+		if (rs->call_frames[i].type == RSAVE_METHOD_CALL) {
+			buffer_write_int32(&w, rs->call_frames[i].struct_ptr);
+			nr_struct_ptrs++;
+		}
+	}
+	buffer_write_int32_at(&w, nr_struct_ptrs_loc, nr_struct_ptrs);
+
+	buffer_write_int32(&w, rs->nr_return_records);
+	for (int i = 0; i < rs->nr_return_records; i++)
+		write_return_record(&w, &rs->return_records[i]);
+	buffer_write_int32(&w, rs->uk2);
+	buffer_write_int32(&w, rs->uk3);
+	buffer_write_int32(&w, rs->uk4);
+	buffer_write_int32(&w, rs->nr_heap_objs);
+	for (int i = 0; i < rs->nr_heap_objs; i++) {
+		enum rsave_heap_tag *tag = rs->heap[i];
+		switch (*tag) {
+		case RSAVE_GLOBALS:
+		case RSAVE_LOCALS:
+			write_heap_frame(&w, rs->heap[i]);
+			break;
+		case RSAVE_STRING:
+			write_heap_string(&w, rs->heap[i]);
+			break;
+		case RSAVE_ARRAY:
+			write_heap_array(&w, rs->heap[i]);
+			break;
+		case RSAVE_STRUCT:
+			write_heap_struct(&w, rs->heap[i]);
+			break;
+		case RSAVE_NULL:
+			buffer_write_int32(&w, -1);
+			break;
+		default:
+			ERROR("unknown rsave heap tag %d", *tag);
+		}
+	}
+	if (rs->version >= 6) {
+		buffer_write_int32(&w, rs->nr_func_names);
+		for (int i = 0; i < rs->nr_func_names; i++)
+			buffer_write_cstringz(&w, rs->func_names[i]);
+	}
+
+	struct savefile save = {
+		.buf = w.buf,
+		.len = w.index,
+		.encrypted = encrypt,
+		.compression_level = compression_level
+	};
+	enum savefile_error err = savefile_write(&save, out);
+	free(w.buf);
+	return err;
 }
