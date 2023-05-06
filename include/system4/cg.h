@@ -43,12 +43,6 @@ enum cg_type {
 	_ALCG_NR_FORMATS
 };
 
-struct cg_palette {
-	uint8_t red[256];
-	uint8_t green[256];
-	uint8_t blue[256];
-};
-
 struct cg_metrics {
 	int x;
 	int y;
@@ -67,7 +61,6 @@ struct cg_metrics {
 struct cg {
 	enum cg_type type; // cg format type
 	struct cg_metrics metrics;
-	struct cg_palette *pal;
 	void *pixels;
 };
 

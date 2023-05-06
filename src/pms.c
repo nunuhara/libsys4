@@ -70,17 +70,6 @@ bool pms16_checkfmt(const uint8_t *data)
 	return pms_checkfmt(data) && data[6] == 16;
 }
 
-static struct cg_palette *pms_get_palette(const uint8_t *b)
-{
-	struct cg_palette *pal = xmalloc(sizeof(struct cg_palette));
-	for (int i = 0; i < 256; i++) {
-		pal->red[i]   = *b++;
-		pal->green[i] = *b++;
-		pal->blue[i]  = *b++;
-	}
-	return pal;
-}
-
 /* Convert PMS8 image data to bitmap. */
 static uint8_t *pms8_extract(struct pms_header *pms, const uint8_t *b)
 {
@@ -279,8 +268,6 @@ bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst)
 /* Load a PMS8 CG as an alpha-map. */
 static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
 {
-	cg->pal = pms_get_palette(data + pms->pp);
-
 	cg->type = ALCG_PMS8;
 	uint8_t *alpha = pms8_extract(pms, data + pms->dp);
 
