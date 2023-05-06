@@ -88,6 +88,16 @@ int stat_utf8(const char *path, ustat *st)
 	return r;
 }
 
+char *realpath_utf8(const char *upath)
+{
+	wchar_t realpath[PATH_MAX];
+	wchar_t *relpath = utf8_to_wchar(upath);
+	if (!_wfullpath(realpath, relpath, PATH_MAX)) {
+		return NULL;
+	}
+	return wchar_to_utf8(realpath);
+}
+
 FILE *file_open_utf8(const char *path, const char *mode)
 {
 	wchar_t *wpath = utf8_to_wchar(path);
@@ -174,6 +184,11 @@ char *readdir_utf8(UDIR *dir)
 int stat_utf8(const char *path, ustat *st)
 {
 	return stat(path, st);
+}
+
+char *realpath_utf8(const char *upath)
+{
+	return realpath(upath, NULL);
 }
 
 FILE *file_open_utf8(const char *path, const char *mode)
