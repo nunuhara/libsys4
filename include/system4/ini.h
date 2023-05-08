@@ -38,7 +38,7 @@ struct ini_value {
 	enum ini_value_type type;
 	union {
 		int i;
-		int f;
+		float f;
 		struct string *s;
 		// list
 		struct {
@@ -94,7 +94,7 @@ static inline struct ini_value ini_make_string(struct string *s)
 
 static inline struct ini_value ini_make_list(struct ini_value *values, size_t nr_values)
 {
-	return (struct ini_value) { .type = INI_LIST, .list = values, .list_size = nr_values };
+	return (struct ini_value) { .type = INI_LIST, .list_size = nr_values, .list = values };
 }
 
 #endif /* SYSTEM4_INI_H */
