@@ -191,29 +191,15 @@ int sjis_count_char(const char *_src) {
 	return c;
 }
 
-/* SJIS(EUC) を含む文字列の ASCII を大文字化する */
-void sjis_toupper(char *_src) {
-	uint8_t *src = (uint8_t*)_src;
-	while(*src) {
+// Replaces lowercase letters with uppercase letters and slashes with backslashes.
+void sjis_normalize_path(char *_src) {
+	for (uint8_t *src = (uint8_t*)_src; *src; src++) {
 		if (SJIS_2BYTE(*src)) {
 			src++;
-		} else {
-			if (*src >= 0x60 && *src <= 0x7a) {
-				*src &= 0xdf;
-			}
+		} else if ('a' <= *src && *src <= 'z') {
+			*src -= 'a' - 'A';
+		} else if (*src == '/') {
+			*src = '\\';
 		}
-		src++;
 	}
-}
-
-/* SJIS を含む文字列の ASCII を大文字化する2 */
-char *sjis_toupper2(const char *_src, size_t len) {
-	const uint8_t *src = (uint8_t*)_src;
-	uint8_t *dst;
-
-	dst = malloc(len +1);
-	if (dst == NULL) return NULL;
-	strcpy((char*)dst, (char*)src);
-	sjis_toupper((char*)dst);
-	return (char*)dst;
 }

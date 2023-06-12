@@ -37,8 +37,7 @@ extern char* utf2sjis(const char *src, size_t len);
 extern bool  sjis_has_hankaku(const char *src);
 extern bool  sjis_has_zenkaku(const char *src);
 extern int   sjis_count_char(const char *src);
-extern void  sjis_toupper(char *src);
-extern char* sjis_toupper2(const char *src, size_t len);
+extern void  sjis_normalize_path(char *src);
 
 // Returns (big-endian) SJIS codepoint for first character in a string.
 static inline uint16_t sjis_code(const char *_str)

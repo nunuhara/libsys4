@@ -68,6 +68,6 @@ char *archive_basename(const char *name)
 	char *dot = strrchr(basename, '.');
 	if (dot)
 		*dot = '\0';
-	sjis_toupper(basename);
+	sjis_normalize_path(basename);
 	return basename;
 }
