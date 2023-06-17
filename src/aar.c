@@ -33,7 +33,7 @@
 static void *ht_get_ignorecase(struct hash_table *ht, const char *key, void *dflt)
 {
 	char *uc_key = strdup(key);
-	sjis_toupper(uc_key);
+	sjis_normalize_path(uc_key);
 	void *r = ht_get(ht, uc_key, dflt);
 	free(uc_key);
 	return r;
@@ -42,7 +42,7 @@ static void *ht_get_ignorecase(struct hash_table *ht, const char *key, void *dfl
 struct ht_slot *ht_put_ignorecase(struct hash_table *ht, const char *key, void *dflt)
 {
 	char *uc_key = strdup(key);
-	sjis_toupper(uc_key);
+	sjis_normalize_path(uc_key);
 	void *r = ht_put(ht, uc_key, dflt);
 	free(uc_key);
 	return r;
