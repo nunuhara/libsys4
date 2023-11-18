@@ -299,6 +299,13 @@ void string_set_char(struct string **_str, int i, unsigned int c)
 	if ((i = sjis_index(str->text, i)) < 0)
 		return;
 
+	if (c == 0) {
+		// truncate
+		str->text[i] = '\0';
+		str->size = i;
+		return;
+	}
+
 	bytes_src = SJIS_2BYTE(c) ? 2 : 1;
 	bytes_dst = SJIS_2BYTE(str->text[i]) ? 2 : 1;
 
