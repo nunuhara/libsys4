@@ -69,10 +69,17 @@ static bool get_table_sizes(FILE *fp, int *ptrsize_out, int *mapsize_out)
 		return false;
 
 	// un-obfuscate the first 3 bytes if necessary
-	if (b[1] == 'L' && b[2] == 'D') {
+	switch (b[2]) {
+	case 0x44:  // Sengoku Rance DL edition, Haruka DL edition
 		b[0] -= 0x40;
-		b[1] = 0x00;
+		b[1] -= 0x4c;
 		b[2] = 0x00;
+		break;
+	case 0x14:  // GALZOO island DL edition
+		b[0] -= 0x17;
+		b[1] -= 0x1c;
+		b[2] = 0x00;
+		break;
 	}
 
 	// get ptrsize and mapsize
