@@ -93,3 +93,12 @@ uint32_t mt19937_genrand(struct mt19937 *mt)
 
     return y; 
 }
+
+void mt19937_xorcode(uint8_t *buf, size_t len, uint32_t seed)
+{
+	struct mt19937 mt;
+	mt19937_init(&mt, seed);
+	for (size_t i = 0; i < len; i++) {
+		buf[i] ^= mt19937_genrand(&mt);
+	}
+}
