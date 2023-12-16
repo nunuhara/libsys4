@@ -30,6 +30,8 @@
 #include "system4/savefile.h"
 #include "system4/string.h"
 
+#define GD11_ENCRYPT_KEY 0x12320f
+
 static struct rsave_heap_null rsave_null_singleton = { RSAVE_NULL };
 struct rsave_heap_null * const rsave_null = &rsave_null_singleton;
 
@@ -54,14 +56,6 @@ void savefile_free(struct savefile *save)
 {
 	free(save->buf);
 	free(save);
-}
-
-static void savefile_decrypt(uint8_t *buf, size_t size)
-{
-	struct mt19937 mt;
-	mt19937_init(&mt, 0x12320f);
-	for (size_t i = 0; i < size; i++)
-		buf[i] ^= mt19937_genrand(&mt);
 }
 
 struct savefile *savefile_read(const char *path, enum savefile_error *error)
@@ -101,7 +95,7 @@ struct savefile *savefile_read(const char *path, enum savefile_error *error)
 
 	if (buf[0] == 0x1a) {
 		save->encrypted = true;
-		savefile_decrypt(buf, compressed_size);
+		mt19937_xorcode(buf, compressed_size, GD11_ENCRYPT_KEY);
 	}
 	switch (buf[1]) {
 	case 0x01: save->compression_level = Z_BEST_SPEED; break;
@@ -141,7 +135,7 @@ enum savefile_error savefile_write(struct savefile *save, FILE *out)
 	}
 
 	if (save->encrypted)
-		savefile_decrypt(buf, bufsize);
+		mt19937_xorcode(buf, bufsize, GD11_ENCRYPT_KEY);
 
 	uint8_t header[8] = "GD\x01\x01";
 	LittleEndian_putDW(header, 4, save->len);

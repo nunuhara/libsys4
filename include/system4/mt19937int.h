@@ -17,6 +17,7 @@
 #ifndef SYSTEM4_MT19937INT_H
 #define SYSTEM4_MT19937INT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define MT19937_STATE_SIZE 624
@@ -28,5 +29,6 @@ struct mt19937 {
 
 void mt19937_init(struct mt19937 *mt, uint32_t seed);
 uint32_t mt19937_genrand(struct mt19937 *mt);
+void mt19937_xorcode(uint8_t *buf, size_t len, uint32_t seed);
 
 #endif /* SYSTEM4_MT19937INT_H */

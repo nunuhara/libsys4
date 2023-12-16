@@ -1274,10 +1274,7 @@ static uint8_t *decompress_ain(uint8_t *in, long *len)
 
 void ain_decrypt(uint8_t *buf, size_t len)
 {
-	struct mt19937 mt;
-	mt19937_init(&mt, 0x5D3E3);
-	for (size_t i = 0; i < len; i++)
-		buf[i] ^= mt19937_genrand(&mt);
+	mt19937_xorcode(buf, len, 0x5D3E3);
 }
 
 static bool ain_is_encrypted(uint8_t *buf)
