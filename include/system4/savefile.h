@@ -137,6 +137,7 @@ struct rsave {
 	char *key;
 	int32_t nr_comments;  // version 7+
 	char **comments;
+	bool comments_only;  // if true, the following fields are not used
 	struct rsave_return_record ip;
 	int32_t uk1;  // always zero
 	int32_t stack_size;
