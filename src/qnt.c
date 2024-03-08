@@ -24,17 +24,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/cg.h"
 #include "system4/qnt.h"
-
-/*
-  zlib の展開バッファで、幅×高さ×３に、さらにどれくらい余裕をとるか
-   (リクルスで 1164バイトというのがあった)
-*/
-#define ZLIBBUF_MARGIN 5*1024
+#include "system4/zlib.h"
 
 /*
  * Get information from header
@@ -83,10 +77,10 @@ void qnt_extract_header(const uint8_t *b, struct qnt_header *qnt)
 static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
 {
 	int i, j, x, y, w, h;
-	unsigned long ucbuf = (qnt->width+1) * (qnt->height+1) * 3 + ZLIBBUF_MARGIN;
+	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1) * 3;
 	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
 
-	if (Z_OK != uncompress(raw, &ucbuf, b, qnt->pixel_size)) {
+	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->pixel_size)) {
 		WARNING("uncompress failed\n");
 		free(raw);
 		return;
@@ -166,10 +160,10 @@ static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
 {
 	int i, x, y, w, h;
-	unsigned long ucbuf = (qnt->width+1) * (qnt->height+1) + ZLIBBUF_MARGIN;
+	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1);
 	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
 
-	if (Z_OK != uncompress(raw, &ucbuf, b, qnt->alpha_size)) {
+	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->alpha_size)) {
 		WARNING("uncompress failed\n");
 		free(raw);
 		return;
@@ -329,11 +323,12 @@ static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
 	}
 	assert(p == buf + bufsize);
 
-	unsigned long destsize = compressBound(bufsize);
+	size_t destsize = zlib_compress_bound(bufsize);
 	uint8_t *compressed = malloc(destsize);
-	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
-	if (r != Z_OK) {
-		WARNING("qnt: compress() failed with error code %d", r);
+	destsize = zlib_compress(compressed, destsize, buf, bufsize,
+			ZLIB_BEST_COMPRESSION);
+	if (!destsize) {
+		WARNING("qnt: zlib_compress() failed");
 		free(buf);
 		free(compressed);
 		return NULL;
@@ -355,11 +350,12 @@ static uint8_t *encode_alpha(struct qnt_header *qnt, uint8_t **rows) {
 			buf[y * width + x] = rows[y][x * 4 + 3];
 	}
 
-	unsigned long destsize = compressBound(bufsize);
+	size_t destsize = zlib_compress_bound(bufsize);
 	uint8_t *compressed = malloc(destsize);
-	int r = compress2(compressed, &destsize, buf, bufsize, Z_BEST_COMPRESSION);
-	if (r != Z_OK) {
-		WARNING("qnt: compress() failed with error code %d", r);
+	destsize = zlib_compress(compressed, destsize, buf, bufsize,
+			ZLIB_BEST_COMPRESSION);
+	if (!destsize) {
+		WARNING("qnt: zlib_compress() failed");
 		free(buf);
 		free(compressed);
 		return NULL;

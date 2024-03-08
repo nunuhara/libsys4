@@ -21,7 +21,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/aar.h"
@@ -29,6 +28,7 @@
 #include "system4/file.h"
 #include "system4/hashtable.h"
 #include "system4/utfsjis.h"
+#include "system4/zlib.h"
 
 static void *ht_get_ignorecase(struct hash_table *ht, const char *key, void *dflt)
 {
@@ -100,14 +100,14 @@ static bool aar_inflate_entry(struct archive_data *data, uint8_t *buf, uint32_t 
 		WARNING("unknown ZLB version: %u", version);
 		return false;
 	}
-	unsigned long out_size = LittleEndian_getDW(buf, 8);
+	uint32_t out_size = LittleEndian_getDW(buf, 8);
 	uint32_t in_size = LittleEndian_getDW(buf, 12);
 	if (in_size + 16 > size) {
 		WARNING("Bad ZLB size");
 		return false;
 	}
 	uint8_t *out = xmalloc(out_size);
-	if (uncompress(out, &out_size, buf + 16, in_size) != Z_OK) {
+	if (!zlib_decompress_exact(out, out_size, buf + 16, in_size)) {
 		WARNING("uncompress failed");
 		free(out);
 		return false;

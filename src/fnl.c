@@ -17,12 +17,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <math.h>
-#include <zlib.h>
 #include "system4.h"
 #include "system4/buffer.h"
 #include "system4/file.h"
 #include "system4/fnl.h"
 #include "system4/utfsjis.h"
+#include "system4/zlib.h"
 #include "little_endian.h"
 
 /*
@@ -122,7 +122,7 @@ uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g)
 
 	// NOTE: The compressed data may be smaller than this. The rest of the
 	// bitmap must be filled with 0.
-	unsigned long size = fnl_glyph_stride(g) * g->height;
+	size_t size = fnl_glyph_stride(g) * g->height;
 	uint8_t *data = xcalloc(1, size);
 
 	fseek(fnl->file, g->data_pos, SEEK_SET);
@@ -130,17 +130,13 @@ uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g)
 	if (fread(compressed_data, g->data_compsize, 1, fnl->file) != 1)
 		ERROR("Failed to read compressed data");
 
-	int rv = uncompress(data, &size, compressed_data, g->data_compsize);
+	size_t actual_size;
+	bool ok = zlib_decompress(data, size, compressed_data, g->data_compsize,
+			&actual_size);
 	free(compressed_data);
 
-	if (rv != Z_OK) {
-		if (rv == Z_BUF_ERROR)
-			ERROR("uncompress failed: Z_BUF_ERROR");
-		else if (rv == Z_MEM_ERROR)
-			ERROR("uncompress failed: Z_MEM_ERROR");
-		else if (rv == Z_DATA_ERROR)
-			ERROR("uncompress failed: Z_DATA_ERROR");
-	}
+	if (!ok)
+		ERROR("zlib_decompress failed");
 	return data;
 }
 

@@ -2,15 +2,23 @@ cmake_minimum_required(VERSION 3.14...4.0)
 project(libsys4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
-find_package(ZLIB REQUIRED)
+add_library(sys4 STATIC)
+
+find_package(libdeflate)
+if (libdeflate_FOUND)
+  target_compile_definitions(sys4 PRIVATE HAVE_LIBDEFLATE)
+  set(ZLIB_DEP libdeflate::libdeflate_static)
+else()
+  find_package(ZLIB REQUIRED)
+  set(ZLIB_DEP ZLIB::ZLIB)
+endif()
+
 find_package(libjpeg-turbo REQUIRED)
 find_package(WebP REQUIRED)
 find_package(PNG REQUIRED)
 
 find_package(FLEX)
 find_package(BISON)
-
-add_library(sys4 STATIC)
 
 target_compile_definitions(sys4 PRIVATE _DEFAULT_SOURCE)
 target_include_directories(sys4 PUBLIC include PRIVATE src)
@@ -49,6 +57,7 @@ target_sources(sys4 PRIVATE
   src/system.c
   src/utfsjis.c
   src/webp.c
+  src/zlib.c
   )
 
 FLEX_TARGET(ini_lexer src/ini_lexer.l  ${CMAKE_CURRENT_BINARY_DIR}/ini_lexer.yy.c)
@@ -63,7 +72,7 @@ target_sources(sys4 PRIVATE
   )
 
 target_link_libraries(sys4 PRIVATE
-  m ZLIB::ZLIB libjpeg-turbo::turbojpeg-static WebP::webp PNG::PNG)
+  m ${ZLIB_DEP} libjpeg-turbo::turbojpeg-static WebP::webp PNG::PNG)
 
 if (ANDROID)
   target_link_libraries(sys4 PRIVATE log)

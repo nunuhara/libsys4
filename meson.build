@@ -11,7 +11,12 @@ if host_machine.system() == 'darwin'
     platform_deps = dependency('appleframeworks', modules : 'CoreFoundation')
 endif
 
-zlib = dependency('zlib', static : static_libs)
+zlib_backend = dependency('libdeflate', required: false, static : static_libs)
+if zlib_backend.found()
+    add_project_arguments('-DHAVE_LIBDEFLATE', language : 'c')
+else
+    zlib_backend = dependency('zlib', static : static_libs)
+endif
 libm = meson.get_compiler('c').find_library('m', required: false)
 tj = dependency('libturbojpeg', static : static_libs)
 webp = dependency('libwebp', static : static_libs)
@@ -65,13 +70,14 @@ system4 = ['src/aar.c',
            'src/system.c',
            'src/utfsjis.c',
            'src/webp.c',
+           'src/zlib.c',
 ]
 
 system4 += flexgen.process('src/ini_lexer.l')
 system4 += bisongen.process('src/ini_parser.y')
 
 libsys4 = library('sys4', system4,
-                  dependencies : [libm, zlib, tj, webp, png] + platform_deps,
+                  dependencies : [libm, zlib_backend, tj, webp, png] + platform_deps,
                   include_directories : [inc, local_inc])
 
 libsys4_dep = declare_dependency(include_directories : inc,

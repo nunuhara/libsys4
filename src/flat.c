@@ -16,7 +16,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/ajp.h"
@@ -25,6 +24,7 @@
 #include "system4/flat.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "system4/zlib.h"
 
 static struct string *buffer_read_flat_string(struct buffer *r)
 {
@@ -330,11 +330,10 @@ static bool parse_timelines(struct flat *fl,  struct buffer *r, struct flat_time
 
 
 	if (is_compressed) {
-		unsigned long uncompressed_size = buffer_read_int32(r);
+		size_t uncompressed_size = buffer_read_int32(r);
 
 		allocated = xmalloc(uncompressed_size);
-		int res = uncompress(allocated, &uncompressed_size, buffer_data(r), buffer_remaining(r));
-		if (res != Z_OK) {
+		if (!zlib_decompress_exact(allocated, uncompressed_size, buffer_data(r), buffer_remaining(r))) {
 			WARNING("Failed to uncompress timelines");
 			goto error;
 		}
@@ -874,9 +873,11 @@ void flat_write_timelines(struct buffer *b, const struct flat_timeline *tls, siz
 		write_timeline(&plain, &tls[i], version);
 
 	if (version >= 4) {
-		uLongf bound = compressBound(plain.index);
+		size_t bound = zlib_compress_bound(plain.index);
 		uint8_t *cbuf = xmalloc(bound);
-		if (compress2(cbuf, &bound, plain.buf, plain.index, Z_BEST_COMPRESSION) != Z_OK)
+		bound = zlib_compress(cbuf, bound, plain.buf, plain.index,
+			ZLIB_BEST_COMPRESSION);
+		if (!bound)
 			ERROR("compress2() failed for FLAT timelines");
 		buffer_write_int32(b, (uint32_t)plain.index);
 		buffer_write_bytes(b, cbuf, bound);

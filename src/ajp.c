@@ -19,12 +19,12 @@
 #include <string.h>
 #include <turbojpeg.h>
 #include <webp/decode.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/cg.h"
 #include "system4/pms.h"
 #include "system4/webp.h"
+#include "system4/zlib.h"
 
 bool ajp_checkfmt(const uint8_t *data)
 {
@@ -98,14 +98,12 @@ static uint8_t *read_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header
 		return mask;
 	} else if (mask_data[0] == 0x78) {
 		// compressed
-		unsigned long uncompressed_size = ajp->width * ajp->height;
+		size_t uncompressed_size = ajp->width * ajp->height;
 		uint8_t *mask = xmalloc(uncompressed_size);
-		if (uncompress(mask, &uncompressed_size, mask_data, ajp->mask_size) != Z_OK) {
+		if (!zlib_decompress_exact(mask, uncompressed_size, mask_data, ajp->mask_size)) {
 			WARNING("uncompress failed");
 			free(mask);
 			return NULL;
-		} else if (uncompressed_size != (unsigned)ajp->width * (unsigned)ajp->height) {
-			WARNING("Unexpected AJP mask size");
 		}
 		return mask;
 	}

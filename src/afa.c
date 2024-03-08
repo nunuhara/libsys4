@@ -21,7 +21,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/afa.h"
@@ -30,6 +29,7 @@
 #include "system4/file.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 
 typedef struct string *(*string_conv_fun)(const char*,size_t);
 
@@ -296,8 +296,7 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 		goto exit_err;
 	}
 
-	unsigned long uncompressed_size = ar->uncompressed_size;
-	if (uncompress(table, &uncompressed_size, buf, ar->compressed_size) != Z_OK) {
+	if (!zlib_decompress_exact(table, ar->uncompressed_size, buf, ar->compressed_size)) {
 		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
 		goto exit_err;
 	}

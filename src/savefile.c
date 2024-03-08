@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <zlib.h>
 
 #include "little_endian.h"
 #include "system4.h"
@@ -29,6 +28,7 @@
 #include "system4/mt19937int.h"
 #include "system4/savefile.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 
 #define GD11_ENCRYPT_KEY 0x12320f
 
@@ -98,14 +98,14 @@ struct savefile *savefile_read(const char *path, enum savefile_error *error)
 		mt19937_xorcode(buf, compressed_size, GD11_ENCRYPT_KEY);
 	}
 	switch (buf[1]) {
-	case 0x01: save->compression_level = Z_BEST_SPEED; break;
-	case 0xda: save->compression_level = Z_BEST_COMPRESSION; break;
-	default:   save->compression_level = Z_DEFAULT_COMPRESSION; break;
+	case 0x01: save->compression_level = ZLIB_BEST_SPEED; break;
+	case 0xda: save->compression_level = ZLIB_BEST_COMPRESSION; break;
+	default:   save->compression_level = ZLIB_DEFAULT_COMPRESSION; break;
 	}
 
 	unsigned long raw_size = LittleEndian_getDW(header, 4);
 	save->buf = xmalloc(raw_size);
-	if (uncompress(save->buf, &raw_size, buf, compressed_size) != Z_OK) {
+	if (!zlib_decompress_exact(save->buf, raw_size, buf, compressed_size)) {
 		*error = SAVEFILE_INVALID;
 		goto err;
 	}
@@ -126,10 +126,10 @@ struct savefile *savefile_read(const char *path, enum savefile_error *error)
 
 enum savefile_error savefile_write(struct savefile *save, FILE *out)
 {
-	unsigned long bufsize = compressBound(save->len);
+	size_t bufsize = zlib_compress_bound(save->len);
 	uint8_t *buf = xmalloc(bufsize);
-	int r = compress2(buf, &bufsize, save->buf, save->len, save->compression_level);
-	if (r != Z_OK) {
+	bufsize = zlib_compress(buf, bufsize, save->buf, save->len, save->compression_level);
+	if (!bufsize) {
 		free(buf);
 		return SAVEFILE_INTERNAL_ERROR;
 	}

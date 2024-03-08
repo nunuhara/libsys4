@@ -44,13 +44,13 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/afa.h"
 #include "system4/archive.h"
 #include "system4/buffer.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 
 typedef struct string *(*string_conv_fun)(const char*,size_t);
 
@@ -350,7 +350,7 @@ bool afa3_read_metadata(char *hdr, FILE *f, struct afa_archive *ar, int *error, 
 
 	// decompress
 	unpacked = xmalloc(unpacked_size);
-	if (uncompress(unpacked, &unpacked_size, packed, packed_size) != Z_OK) {
+	if (!zlib_decompress_exact(unpacked, unpacked_size, packed, packed_size)) {
 		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
 		goto err;
 	}

@@ -25,7 +25,6 @@
 #include <string.h>
 #include <libgen.h>
 #include <assert.h>
-#include <zlib.h>
 
 #include "little_endian.h"
 #include "system4.h"
@@ -35,6 +34,7 @@
 #include "system4/instructions.h"
 #include "system4/mt19937int.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 
 struct func_list {
 	int nr_slots;
@@ -1314,14 +1314,8 @@ static uint8_t *decompress_ain(uint8_t *in, long *len)
 		return NULL;
 
 	out = xmalloc(out_len);
-	int r = uncompress(out, (unsigned long*)&out_len, in+16, in_len);
-	if (r != Z_OK) {
-		if (r == Z_BUF_ERROR)
-			WARNING("uncompress failed: Z_BUF_ERROR");
-		else if (r == Z_MEM_ERROR)
-			WARNING("uncompress failed: Z_MEM_ERROR");
-		else if (r == Z_DATA_ERROR)
-			WARNING("uncompress failed: Z_DATA_ERROR");
+	if (!zlib_decompress_exact(out, out_len, in+16, in_len)) {
+		WARNING("ain: zlib_decompress failed");
 		free(out);
 		return NULL;
 	}
