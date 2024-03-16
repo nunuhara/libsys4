@@ -366,13 +366,22 @@ int mkdir_p(const char *path)
 	}
 	strcpy(_path, path);
 
+	// In xsystem4-android this function is used to create a save directory.
+	// Save directories must be group-readable so that they can be transferred
+	// via MTP.
+#ifdef __ANDROID__
+	int mode = S_IRWXU | S_IRWXG;
+#else
+	int mode = S_IRWXU;
+#endif
+
 	// Iterate the string
 	for (p = _path + 1; *p; p++) {
 		if (*p == '/') {
 			// Temporarily truncate
 			*p = '\0';
 
-			if (make_dir(_path, S_IRWXU) != 0) {
+			if (make_dir(_path, mode) != 0) {
 				if (errno != EEXIST)
 					return -1;
 			}
@@ -381,7 +390,7 @@ int mkdir_p(const char *path)
 		}
 	}
 
-	if (make_dir(_path, S_IRWXU) != 0) {
+	if (make_dir(_path, mode) != 0) {
 		if (errno != EEXIST)
 			return -1;
 	}
