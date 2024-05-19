@@ -22,6 +22,35 @@
 #define LITTLE_ENDIAN_H
 
 #include <stdint.h>
+#include <string.h>
+
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+
+static inline int32_t LittleEndian_getDW(const uint8_t *b, int i)
+{
+	int32_t t;
+	memcpy(&t, b + i, sizeof t);
+	return t;
+}
+
+static inline int16_t LittleEndian_getW(const uint8_t *b, int i)
+{
+	int16_t t;
+	memcpy(&t, b + i, sizeof t);
+	return t;
+}
+
+static inline void LittleEndian_putDW(uint8_t *dst, int i, uint32_t dword)
+{
+	memcpy(dst + i, &dword, sizeof dword);
+}
+
+static inline void LittleEndian_putW(uint8_t *dst, int i, uint16_t word)
+{
+	memcpy(dst + i, &word, sizeof word);
+}
+
+#else
 
 static inline int32_t LittleEndian_getDW(const uint8_t *b, int i)
 {
@@ -34,15 +63,6 @@ static inline int32_t LittleEndian_getDW(const uint8_t *b, int i)
 	d0 = c0 + (c1 << 8);
 	d1 = c2 + (c3 << 8);
 	return d0 + (d1 << 16);
-}
-
-static inline int32_t LittleEndian_get3B(const uint8_t *b, int i)
-{
-	int c0, c1, c2;
-	c0 = *(b + i + 0);
-	c1 = *(b + i + 1);
-	c2 = *(b + i + 2);
-	return c0 + (c1 << 8) + (c2 << 16);
 }
 
 static inline int16_t LittleEndian_getW(const uint8_t *b, int i)
@@ -65,6 +85,17 @@ static inline void LittleEndian_putW(uint8_t *dst, int i, uint16_t word)
 {
 	dst[i]   = word & 0xFF;
 	dst[i+1] = word >> 8;
+}
+
+#endif
+
+static inline int32_t LittleEndian_get3B(const uint8_t *b, int i)
+{
+	int c0, c1, c2;
+	c0 = *(b + i + 0);
+	c1 = *(b + i + 1);
+	c2 = *(b + i + 2);
+	return c0 + (c1 << 8) + (c2 << 16);
 }
 
 #endif /* LITTLE_ENDIAN_H */
