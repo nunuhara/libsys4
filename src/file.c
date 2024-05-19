@@ -98,6 +98,14 @@ char *realpath_utf8(const char *upath)
 	return wchar_to_utf8(realpath);
 }
 
+int remove_utf8(const char *path)
+{
+	wchar_t *wpath = utf8_to_wchar(path);
+	int r = _wremove(wpath);
+	free(wpath);
+	return r;
+}
+
 FILE *file_open_utf8(const char *path, const char *mode)
 {
 	wchar_t *wpath = utf8_to_wchar(path);
@@ -189,6 +197,11 @@ int stat_utf8(const char *path, ustat *st)
 char *realpath_utf8(const char *upath)
 {
 	return realpath(upath, NULL);
+}
+
+int remove_utf8(const char *path)
+{
+	return remove(path);
 }
 
 FILE *file_open_utf8(const char *path, const char *mode)
