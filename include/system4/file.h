@@ -39,6 +39,7 @@ int closedir_utf8(UDIR *dir);
 char *readdir_utf8(UDIR *dir);
 int stat_utf8(const char *path, ustat *st);
 char *realpath_utf8(const char *upath);
+int remove_utf8(const char *path);
 FILE *file_open_utf8(const char *path, const char *mode);
 void *file_read(const char *path, size_t *len_out);
 bool file_write(const char *path, uint8_t *data, size_t data_size);
