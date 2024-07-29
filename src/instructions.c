@@ -210,7 +210,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( S_POP,          0, (),                        (T_STRING),                 () ),
         OP   ( S_ADD,          0, (),                        (T_STRING, T_STRING),       (T_STRING) ),
         OP   ( S_ASSIGN,       0, (),                        (T_STRING, T_STRING),       (T_STRING) ),
-        TODO ( S_PLUSA,        0, (),                        (T_STRING, T_STRING),       (T_STRING) ),
+        OP   ( S_PLUSA,        0, (),                        (T_STRING, T_STRING),       (T_STRING) ),
         OP   ( S_REF,          0, (),                        (T_PAGE, T_VAR),            (T_STRING) ),
         TODO ( S_REFREF,       0, (),                        (),                         () ),
         OP   ( S_NOTE,         0, (),                        (T_STRING, T_STRING),       (T_INT) ),
