@@ -60,6 +60,7 @@ static struct string *ex_read_pascal_string(struct ex_reader *r)
 	struct string *s = buffer_conv_pascal_string(&r->buf, r->conv);
 	if (!s)
 		EX_ERROR(r, "Failed to read string");
+	s->size = strlen(s->text);
 	return s;
 }
 
