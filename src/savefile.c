@@ -549,6 +549,11 @@ static void rsave_free_struct(struct rsave_heap_struct *s)
 	free(s);
 }
 
+static void rsave_free_delegate(struct rsave_heap_delegate *d)
+{
+	free(d);
+}
+
 void rsave_free(struct rsave *rs)
 {
 	free(rs->key);
@@ -576,6 +581,9 @@ void rsave_free(struct rsave *rs)
 			break;
 		case RSAVE_STRUCT:
 			rsave_free_struct(rs->heap[i]);
+			break;
+		case RSAVE_DELEGATE:
+			rsave_free_delegate(rs->heap[i]);
 			break;
 		case RSAVE_NULL:
 			assert(rs->heap[i] == rsave_null);
@@ -674,6 +682,8 @@ static struct rsave_heap_frame *parse_heap_frame(struct buffer *r, int32_t versi
 {
 	struct rsave_heap_frame f = { .tag = tag };
 	f.ref = buffer_read_int32(r);
+	if (version >= 9)
+		f.seq = buffer_read_int32(r);
 	if (version == 4) {
 		f.func.id = buffer_read_int32(r);
 	} else if (tag == RSAVE_GLOBALS) {
@@ -685,6 +695,8 @@ static struct rsave_heap_frame *parse_heap_frame(struct buffer *r, int32_t versi
 	}
 
 	f.types = parse_int_array(r, &f.nr_types);
+	if (tag == RSAVE_LOCALS && version >= 9)
+		f.struct_ptr = buffer_read_int32(r);
 	int slots_size = buffer_read_int32(r);
 	if (slots_size % sizeof(int32_t) != 0) {
 		free(f.func.name);
@@ -700,10 +712,12 @@ static struct rsave_heap_frame *parse_heap_frame(struct buffer *r, int32_t versi
 	return obj;
 }
 
-static struct rsave_heap_string *parse_heap_string(struct buffer *r)
+static struct rsave_heap_string *parse_heap_string(struct buffer *r, int32_t version)
 {
 	struct rsave_heap_string s = { .tag = RSAVE_STRING };
 	s.ref = buffer_read_int32(r);
+	if (version >= 9)
+		s.seq = buffer_read_int32(r);
 	s.uk = buffer_read_int32(r);
 	if (s.uk != 0 && s.uk != 1)
 		ERROR("unexpected");
@@ -718,6 +732,8 @@ static struct rsave_heap_array *parse_heap_array(struct buffer *r, int32_t versi
 {
 	struct rsave_heap_array a = { .tag = RSAVE_ARRAY };
 	a.ref = buffer_read_int32(r);
+	if (version >= 9)
+		a.seq = buffer_read_int32(r);
 	a.rank_minus_1 = buffer_read_int32(r);
 	a.data_type = buffer_read_int32(r);
 	a.struct_type = parse_rsave_symbol(r, version);
@@ -741,6 +757,8 @@ static struct rsave_heap_struct *parse_heap_struct(struct buffer *r, int32_t ver
 {
 	struct rsave_heap_struct s = { .tag = RSAVE_STRUCT };
 	s.ref = buffer_read_int32(r);
+	if (version >= 9)
+		s.seq = buffer_read_int32(r);
 	s.ctor = parse_rsave_symbol(r, version);
 	s.dtor = parse_rsave_symbol(r, version);
 	s.uk = buffer_read_int32(r);
@@ -764,6 +782,25 @@ static struct rsave_heap_struct *parse_heap_struct(struct buffer *r, int32_t ver
 	return obj;
 }
 
+static struct rsave_heap_delegate *parse_heap_delegate(struct buffer *r, int32_t version)
+{
+	if (version < 9)
+		return NULL;
+	struct rsave_heap_delegate d = { .tag = RSAVE_DELEGATE };
+	d.ref = buffer_read_int32(r);
+	d.seq = buffer_read_int32(r);
+	int slots_size = buffer_read_int32(r);
+	if (slots_size % sizeof(int32_t) != 0) {
+		return NULL;
+	}
+	d.nr_slots = slots_size / sizeof(int32_t);
+	struct rsave_heap_delegate *obj = xmalloc(sizeof(struct rsave_heap_delegate) + slots_size);
+	*obj = d;
+	for (int i = 0; i < d.nr_slots; i++)
+		obj->slots[i] = buffer_read_int32(r);
+	return obj;
+}
+
 enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
 {
 	struct buffer r;
@@ -774,7 +811,7 @@ enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
 	buffer_skip(&r, 4);
 
 	rs->version = buffer_read_int32(&r);
-	if (rs->version != 4 && rs->version != 6 && rs->version != 7)
+	if (rs->version != 4 && rs->version != 6 && rs->version != 7 && rs->version != 9)
 		return SAVEFILE_UNSUPPORTED_FORMAT;
 	rs->key = strdup(buffer_skip_string(&r));
 	if (rs->version >= 7) {
@@ -799,6 +836,8 @@ enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
 	rs->uk2 = buffer_read_int32(&r);
 	rs->uk3 = buffer_read_int32(&r);
 	rs->uk4 = buffer_read_int32(&r);
+	if (rs->version >= 9)
+		rs->next_seq = buffer_read_int32(&r);
 	if (rs->uk2 || rs->uk3 || rs->uk4)
 		ERROR("unexpected");
 
@@ -812,13 +851,16 @@ enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
 			rs->heap[i] = parse_heap_frame(&r, rs->version, tag);
 			break;
 		case RSAVE_STRING:
-			rs->heap[i] = parse_heap_string(&r);
+			rs->heap[i] = parse_heap_string(&r, rs->version);
 			break;
 		case RSAVE_ARRAY:
 			rs->heap[i] = parse_heap_array(&r, rs->version);
 			break;
 		case RSAVE_STRUCT:
 			rs->heap[i] = parse_heap_struct(&r, rs->version);
+			break;
+		case RSAVE_DELEGATE:
+			rs->heap[i] = parse_heap_delegate(&r, rs->version);
 			break;
 		case RSAVE_NULL:
 			rs->heap[i] = rsave_null;
@@ -856,32 +898,40 @@ static void write_return_record(struct buffer *w, struct rsave_return_record *f)
 	buffer_write_int32(w, f->crc);
 }
 
-static void write_heap_frame(struct buffer *w, struct rsave_heap_frame *f)
+static void write_heap_frame(struct buffer *w, enum rsave_heap_tag tag, int32_t version, struct rsave_heap_frame *f)
 {
 	buffer_write_int32(w, f->tag);
 	buffer_write_int32(w, f->ref);
+	if (version >= 9)
+		buffer_write_int32(w, f->seq);
 	write_rsave_symbol(w, &f->func);
 	buffer_write_int32(w, f->nr_types);
 	for (int i = 0; i < f->nr_types; i++)
 		buffer_write_int32(w, f->types[i]);
+	if (tag == RSAVE_LOCALS && version >= 9)
+		buffer_write_int32(w, f->struct_ptr);
 	buffer_write_int32(w, f->nr_slots * sizeof(int32_t));
 	for (int i = 0; i < f->nr_slots; i++)
 		buffer_write_int32(w, f->slots[i]);
 }
 
-static void write_heap_string(struct buffer *w, struct rsave_heap_string *s)
+static void write_heap_string(struct buffer *w, int32_t version, struct rsave_heap_string *s)
 {
 	buffer_write_int32(w, s->tag);
 	buffer_write_int32(w, s->ref);
+	if (version >= 9)
+		buffer_write_int32(w, s->seq);
 	buffer_write_int32(w, s->uk);
 	buffer_write_int32(w, s->len);
 	buffer_write_bytes(w, (uint8_t*)s->text, s->len);
 }
 
-static void write_heap_array(struct buffer *w, struct rsave_heap_array *a)
+static void write_heap_array(struct buffer *w, int32_t version, struct rsave_heap_array *a)
 {
 	buffer_write_int32(w, a->tag);
 	buffer_write_int32(w, a->ref);
+	if (version >= 9)
+		buffer_write_int32(w, a->seq);
 	buffer_write_int32(w, a->rank_minus_1);
 	buffer_write_int32(w, a->data_type);
 	write_rsave_symbol(w, &a->struct_type);
@@ -892,10 +942,12 @@ static void write_heap_array(struct buffer *w, struct rsave_heap_array *a)
 		buffer_write_int32(w, a->slots[i]);
 }
 
-static void write_heap_struct(struct buffer *w, struct rsave_heap_struct *s)
+static void write_heap_struct(struct buffer *w, int32_t version, struct rsave_heap_struct *s)
 {
 	buffer_write_int32(w, s->tag);
 	buffer_write_int32(w, s->ref);
+	if (version >= 9)
+		buffer_write_int32(w, s->seq);
 	write_rsave_symbol(w, &s->ctor);
 	write_rsave_symbol(w, &s->dtor);
 	buffer_write_int32(w, s->uk);
@@ -906,6 +958,17 @@ static void write_heap_struct(struct buffer *w, struct rsave_heap_struct *s)
 	buffer_write_int32(w, s->nr_slots * sizeof(int32_t));
 	for (int i = 0; i < s->nr_slots; i++)
 		buffer_write_int32(w, s->slots[i]);
+}
+
+static void write_heap_delegate(struct buffer *w, int32_t version, struct rsave_heap_delegate *d)
+{
+	buffer_write_int32(w, d->tag);
+	buffer_write_int32(w, d->ref);
+	if (version >= 9)
+		buffer_write_int32(w, d->seq);
+	buffer_write_int32(w, d->nr_slots * sizeof(int32_t));
+	for (int i = 0; i < d->nr_slots; i++)
+		buffer_write_int32(w, d->slots[i]);
 }
 
 enum savefile_error rsave_write(struct rsave *rs, FILE *out, bool encrypt, int compression_level)
@@ -949,22 +1012,27 @@ enum savefile_error rsave_write(struct rsave *rs, FILE *out, bool encrypt, int c
 		buffer_write_int32(&w, rs->uk2);
 		buffer_write_int32(&w, rs->uk3);
 		buffer_write_int32(&w, rs->uk4);
+		if (rs->version >= 9)
+			buffer_write_int32(&w, rs->next_seq);
 		buffer_write_int32(&w, rs->nr_heap_objs);
 		for (int i = 0; i < rs->nr_heap_objs; i++) {
 			enum rsave_heap_tag *tag = rs->heap[i];
 			switch (*tag) {
 			case RSAVE_GLOBALS:
 			case RSAVE_LOCALS:
-				write_heap_frame(&w, rs->heap[i]);
+				write_heap_frame(&w, *tag, rs->version, rs->heap[i]);
 				break;
 			case RSAVE_STRING:
-				write_heap_string(&w, rs->heap[i]);
+				write_heap_string(&w, rs->version, rs->heap[i]);
 				break;
 			case RSAVE_ARRAY:
-				write_heap_array(&w, rs->heap[i]);
+				write_heap_array(&w, rs->version, rs->heap[i]);
 				break;
 			case RSAVE_STRUCT:
-				write_heap_struct(&w, rs->heap[i]);
+				write_heap_struct(&w, rs->version, rs->heap[i]);
+				break;
+			case RSAVE_DELEGATE:
+				write_heap_delegate(&w, rs->version, rs->heap[i]);
 				break;
 			case RSAVE_NULL:
 				buffer_write_int32(&w, -1);
