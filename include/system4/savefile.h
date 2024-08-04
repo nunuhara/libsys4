@@ -149,6 +149,7 @@ struct rsave {
 	int32_t uk2;  // always zero
 	int32_t uk3;  // always zero
 	int32_t uk4;  // always zero
+	int32_t next_seq;  // version 9+
 	int32_t nr_heap_objs;
 	void **heap;  // pointers to `struct rsave_heap_xxx` or rsave_null
 	int32_t nr_func_names;  // version 6+
@@ -179,15 +180,18 @@ enum rsave_heap_tag {
 	RSAVE_STRING = 2,
 	RSAVE_ARRAY = 3,
 	RSAVE_STRUCT = 4,
+	RSAVE_DELEGATE = 5,  // version 9+
 	RSAVE_NULL = -1
 };
 
 struct rsave_heap_frame {
 	enum rsave_heap_tag tag;  // RSAVE_GLOBALS or RSAVE_LOCALS
 	int32_t ref;
+	int32_t seq;  // version 9+
 	struct rsave_symbol func;
 	int32_t nr_types;
 	int32_t *types;
+	int32_t struct_ptr;  // only in RSAVE_LOCALS, version 9+
 	int32_t nr_slots;
 	int32_t slots[];
 };
@@ -195,6 +199,7 @@ struct rsave_heap_frame {
 struct rsave_heap_string {
 	enum rsave_heap_tag tag;  // RSAVE_STRING
 	int32_t ref;
+	int32_t seq;  // version 9+
 	int32_t uk;   // 0 or (very rarely) 1
 	int32_t len;  // including null terminator
 	char text[];
@@ -203,6 +208,7 @@ struct rsave_heap_string {
 struct rsave_heap_array {
 	enum rsave_heap_tag tag;  // RSAVE_ARRAY
 	int32_t ref;
+	int32_t seq;  // version 9+
 	int32_t rank_minus_1;  // -1 if null
 	enum ain_data_type data_type;
 	struct rsave_symbol struct_type;
@@ -217,12 +223,21 @@ struct rsave_heap_array {
 struct rsave_heap_struct {
 	enum rsave_heap_tag tag;  // RSAVE_STRUCT
 	int32_t ref;
+	int32_t seq;  // version 9+
 	struct rsave_symbol ctor;
 	struct rsave_symbol dtor;
 	int32_t uk;   // always zero?
 	struct rsave_symbol struct_type;
 	int32_t nr_types;
 	int32_t *types;
+	int32_t nr_slots;
+	int32_t slots[];
+};
+
+struct rsave_heap_delegate {
+	enum rsave_heap_tag tag;  // RSAVE_DELEGATE
+	int32_t ref;
+	int32_t seq;
 	int32_t nr_slots;
 	int32_t slots[];
 };
