@@ -39,6 +39,11 @@ extern bool  sjis_has_zenkaku(const char *src);
 extern int   sjis_count_char(const char *src);
 extern void  sjis_normalize_path(char *src);
 
+#ifdef _WIN32
+wchar_t *utf8_to_wchar(const char *str);
+char *wchar_to_utf8(const wchar_t *wstr);
+#endif
+
 // Returns (big-endian) SJIS codepoint for first character in a string.
 static inline uint16_t sjis_code(const char *_str)
 {
