@@ -203,3 +203,23 @@ void sjis_normalize_path(char *_src) {
 		}
 	}
 }
+
+#ifdef _WIN32
+#include <windows.h>
+
+wchar_t *utf8_to_wchar(const char *str)
+{
+	int nr_wchars = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+	wchar_t *wstr = xmalloc(nr_wchars * sizeof(wchar_t));
+	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, nr_wchars);
+	return wstr;
+}
+
+char *wchar_to_utf8(const wchar_t *wstr)
+{
+	int nr_chars = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+	char *str = xmalloc(nr_chars);
+	WideCharToMultiByte(CP_UTF8, 0, wstr, -1, str, nr_chars, NULL, NULL);
+	return str;
+}
+#endif
