@@ -247,9 +247,14 @@ struct rsave_heap_null {
 };
 extern struct rsave_heap_null * const rsave_null;
 
+enum rsave_read_mode {
+	RSAVE_READ_ALL,
+	RSAVE_READ_COMMENTS,
+};
+
 void rsave_free(struct rsave *rs);
-struct rsave *rsave_read(const char *path, enum savefile_error *error);
-enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs);
+struct rsave *rsave_read(const char *path, enum rsave_read_mode mode, enum savefile_error *error);
+enum savefile_error rsave_parse(uint8_t *buf, size_t len, enum rsave_read_mode mode, struct rsave *rs);
 enum savefile_error rsave_write(struct rsave *rs, FILE *out, bool encrypt, int compression_level);
 
 #endif /* SYSTEM4_SAVEFILE_H */
