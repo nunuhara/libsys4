@@ -599,14 +599,14 @@ void rsave_free(struct rsave *rs)
 	free(rs);
 }
 
-struct rsave *rsave_read(const char *path, enum savefile_error *error)
+struct rsave *rsave_read(const char *path, enum rsave_read_mode mode, enum savefile_error *error)
 {
 	struct savefile *save = savefile_read(path, error);
 	if (!save)
 		return NULL;
 
 	struct rsave *rs = xcalloc(1, sizeof(struct rsave));
-	*error = rsave_parse(save->buf, save->len, rs);
+	*error = rsave_parse(save->buf, save->len, mode, rs);
 	if (*error != SAVEFILE_SUCCESS) {
 		rsave_free(rs);
 		rs = NULL;
@@ -801,7 +801,7 @@ static struct rsave_heap_delegate *parse_heap_delegate(struct buffer *r, int32_t
 	return obj;
 }
 
-enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
+enum savefile_error rsave_parse(uint8_t *buf, size_t len, enum rsave_read_mode mode, struct rsave *rs)
 {
 	struct buffer r;
 	buffer_init(&r, buf, len);
@@ -820,6 +820,11 @@ enum savefile_error rsave_parse(uint8_t *buf, size_t len, struct rsave *rs)
 			rs->comments_only = true;
 			return SAVEFILE_SUCCESS;
 		}
+	}
+
+	if (mode == RSAVE_READ_COMMENTS) {
+		rs->comments_only = true;
+		return SAVEFILE_SUCCESS;
 	}
 
 	parse_return_record(&r, &rs->ip);
