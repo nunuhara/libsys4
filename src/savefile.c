@@ -198,6 +198,17 @@ void gsave_free(struct gsave *gs)
 		}
 		free(gs->keyvals);
 	}
+	if (gs->struct_defs) {
+		for (int32_t i = 0; i < gs->nr_struct_defs; i++) {
+			struct gsave_struct_def *sd = &gs->struct_defs[i];
+			free(sd->name);
+			for (int32_t j = 0; j < sd->nr_fields; j++) {
+				free(sd->fields[j].name);
+			}
+			free(sd->fields);
+		}
+		free(gs->struct_defs);
+	}
 	free(gs);
 }
 
@@ -230,7 +241,7 @@ static bool gsave_validate_value(int32_t val, enum ain_data_type type, struct gs
 	case AIN_REF_TYPE:
 		return true;
 	case AIN_STRING:
-		return 0 <= val && val < gs->nr_strings;
+		return (0 <= val && val < gs->nr_strings) || val == GSAVE7_EMPTY_STRING;
 	case AIN_STRUCT:
 		return 0 <= val && val < gs->nr_records;
 	case AIN_ARRAY_TYPE:
@@ -248,7 +259,7 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 	gs->key = strdup(buffer_skip_string(&r));
 	gs->uk1 = buffer_read_int32(&r);
 	gs->version = buffer_read_int32(&r);
-	if (gs->version != 4 && gs->version != 5)
+	if (gs->version != 4 && gs->version != 5 && gs->version != 7)
 		return SAVEFILE_UNSUPPORTED_FORMAT;
 	gs->uk2 = buffer_read_int32(&r);
 	gs->nr_ain_globals = buffer_read_int32(&r);
@@ -273,8 +284,13 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 		return SAVEFILE_INVALID;
 	gs->records = xcalloc(gs->nr_records, sizeof(struct gsave_record));
 	for (struct gsave_record *rec = gs->records; rec < gs->records + gs->nr_records; rec++) {
-		rec->type = buffer_read_int32(&r);
-		rec->struct_name = strdup(buffer_skip_string(&r));
+		if (gs->version <= 5) {
+			rec->type = buffer_read_int32(&r);
+			rec->struct_name = strdup(buffer_skip_string(&r));
+		} else {
+			rec->struct_index = buffer_read_int32(&r);
+			rec->type = rec->struct_index == -1 ? GSAVE_RECORD_GLOBALS : GSAVE_RECORD_STRUCT;
+		}
 		rec->nr_indices = buffer_read_int32(&r);
 		rec->indices = xcalloc(rec->nr_indices, sizeof(int32_t));
 		int index_ubound;
@@ -304,7 +320,8 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 		g->type = buffer_read_int32(&r);
 		g->value = buffer_read_int32(&r);
 		g->name = strdup(buffer_skip_string(&r));
-		g->unknown = buffer_read_int32(&r);
+		if (gs->version <= 5)
+			g->unknown = buffer_read_int32(&r);
 		if (!gsave_validate_value(g->value, g->type, gs))
 			return SAVEFILE_INVALID;
 	}
@@ -341,10 +358,12 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 			fa->nr_values = buffer_read_int32(&r);
 			if (fa->nr_values != a->dimensions[0])
 				return SAVEFILE_INVALID;
+			if (gs->version >= 7)
+				fa->type = buffer_read_int32(&r);
 			fa->values = xcalloc(fa->nr_values, sizeof(struct gsave_array_value));
 			for (int i = 0; i < fa->nr_values; i++) {
 				int32_t value = buffer_read_int32(&r);
-				enum ain_data_type type = buffer_read_int32(&r);
+				enum ain_data_type type = gs->version >= 7 ? fa->type : buffer_read_int32(&r);
 				if (!gsave_validate_value(value, type, gs))
 					return SAVEFILE_INVALID;
 				fa->values[i].value = value;
@@ -358,11 +377,30 @@ enum savefile_error gsave_parse(uint8_t *buf, size_t len, struct gsave *gs)
 		return SAVEFILE_INVALID;
 	gs->keyvals = xcalloc(gs->nr_keyvals, sizeof(struct gsave_keyval));
 	for (struct gsave_keyval *kv = gs->keyvals; kv < gs->keyvals + gs->nr_keyvals; kv++) {
-		kv->type = buffer_read_int32(&r);
-		kv->value = buffer_read_int32(&r);
-		kv->name = strdup(buffer_skip_string(&r));
-		if (!gsave_validate_value(kv->value, kv->type, gs))
-			return SAVEFILE_INVALID;
+		if (gs->version <= 5) {
+			kv->type = buffer_read_int32(&r);
+			kv->value = buffer_read_int32(&r);
+			kv->name = strdup(buffer_skip_string(&r));
+			if (!gsave_validate_value(kv->value, kv->type, gs))
+				return SAVEFILE_INVALID;
+		} else {
+			kv->value = buffer_read_int32(&r);
+		}
+	}
+
+	// struct-defs
+	if (gs->version >= 7) {
+		gs->nr_struct_defs = buffer_read_int32(&r);
+		gs->struct_defs = xcalloc(gs->nr_struct_defs, sizeof(struct gsave_struct_def));
+		for (struct gsave_struct_def *sd = gs->struct_defs; sd < gs->struct_defs + gs->nr_struct_defs; sd++) {
+			sd->name = strdup(buffer_skip_string(&r));
+			sd->nr_fields = buffer_read_int32(&r);
+			sd->fields = xcalloc(sd->nr_fields, sizeof(struct gsave_field_def));
+			for (struct gsave_field_def *fd = sd->fields; fd < sd->fields + sd->nr_fields; fd++) {
+				fd->type = buffer_read_int32(&r);
+				fd->name = strdup(buffer_skip_string(&r));
+			}
+		}
 	}
 
 	return SAVEFILE_SUCCESS;
@@ -402,8 +440,12 @@ enum savefile_error gsave_write(struct gsave *gs, FILE *out, bool encrypt, int c
 	// records
 	buffer_write_int32_at(&w, records_offset_loc, w.index);
 	for (struct gsave_record *r = gs->records; r < gs->records + gs->nr_records; r++) {
-		buffer_write_int32(&w, r->type);
-		buffer_write_cstringz(&w, r->struct_name);
+		if (gs->version <= 5) {
+			buffer_write_int32(&w, r->type);
+			buffer_write_cstringz(&w, r->struct_name);
+		} else {
+			buffer_write_int32(&w, r->struct_index);
+		}
 		buffer_write_int32(&w, r->nr_indices);
 		for (int i = 0; i < r->nr_indices; i++)
 			buffer_write_int32(&w, r->indices[i]);
@@ -415,7 +457,8 @@ enum savefile_error gsave_write(struct gsave *gs, FILE *out, bool encrypt, int c
 		buffer_write_int32(&w, g->type);
 		buffer_write_int32(&w, g->value);
 		buffer_write_cstringz(&w, g->name);
-		buffer_write_int32(&w, g->unknown);
+		if (gs->version <= 5)
+			buffer_write_int32(&w, g->unknown);
 	}
 
 	// strings
@@ -433,9 +476,12 @@ enum savefile_error gsave_write(struct gsave *gs, FILE *out, bool encrypt, int c
 		buffer_write_int32(&w, a->nr_flat_arrays);
 		for (struct gsave_flat_array *fa = a->flat_arrays; fa < a->flat_arrays + a->nr_flat_arrays; fa++) {
 			buffer_write_int32(&w, fa->nr_values);
+			if (gs->version >= 7)
+				buffer_write_int32(&w, fa->type);
 			for (int i = 0; i < fa->nr_values; i++) {
 				buffer_write_int32(&w, fa->values[i].value);
-				buffer_write_int32(&w, fa->values[i].type);
+				if (gs->version <= 5)
+					buffer_write_int32(&w, fa->values[i].type);
 			}
 		}
 	}
@@ -443,9 +489,24 @@ enum savefile_error gsave_write(struct gsave *gs, FILE *out, bool encrypt, int c
 	// key-values
 	buffer_write_int32_at(&w, keyvals_offset_loc, w.index);
 	for (struct gsave_keyval *kv = gs->keyvals; kv < gs->keyvals + gs->nr_keyvals; kv++) {
-		buffer_write_int32(&w, kv->type);
+		if (gs->version <= 5)
+			buffer_write_int32(&w, kv->type);
 		buffer_write_int32(&w, kv->value);
-		buffer_write_cstringz(&w, kv->name);
+		if (gs->version <= 5)
+			buffer_write_cstringz(&w, kv->name);
+	}
+
+	// struct-defs
+	if (gs->version >= 7) {
+		buffer_write_int32(&w, gs->nr_struct_defs);
+		for (struct gsave_struct_def *sd = gs->struct_defs; sd < gs->struct_defs + gs->nr_struct_defs; sd++) {
+			buffer_write_cstringz(&w, sd->name);
+			buffer_write_int32(&w, sd->nr_fields);
+			for (struct gsave_field_def *fd = sd->fields; fd < sd->fields + sd->nr_fields; fd++) {
+				buffer_write_int32(&w, fd->type);
+				buffer_write_cstringz(&w, fd->name);
+			}
+		}
 	}
 
 	struct savefile save = {
@@ -463,6 +524,7 @@ int32_t gsave_add_globals_record(struct gsave *gs, int nr_globals)
 {
 	assert(gs->nr_globals == 0);
 	struct gsave_record rec = {
+		.struct_index = -1,
 		.type = GSAVE_RECORD_GLOBALS,
 		.struct_name = strdup(""),
 		.nr_indices = nr_globals,
@@ -491,6 +553,8 @@ int32_t gsave_add_record(struct gsave *gs, struct gsave_record *rec)
 
 int32_t gsave_add_string(struct gsave *gs, struct string *s)
 {
+	if (gs->version >= 7 && s->size == 0)
+		return GSAVE7_EMPTY_STRING;
 	int n = gs->nr_strings++;
 	if (gs->nr_strings > gs->cap_strings) {
 		gs->cap_strings = max(gs->nr_strings, gs->cap_strings * 2);
@@ -520,6 +584,36 @@ int32_t gsave_add_keyval(struct gsave *gs, struct gsave_keyval *kv)
 	}
 	gs->keyvals[n] = *kv;
 	return n;
+}
+
+int32_t gsave_add_struct_def(struct gsave *gs, struct ain_struct *st)
+{
+	int n = gs->nr_struct_defs++;
+	if (gs->nr_struct_defs > gs->cap_struct_defs) {
+		gs->cap_struct_defs = max(gs->nr_struct_defs, gs->cap_struct_defs * 2);
+		gs->struct_defs = xrealloc_array(gs->struct_defs, n, gs->cap_struct_defs, sizeof(struct gsave_struct_def));
+	}
+
+	struct gsave_struct_def *sd = &gs->struct_defs[n];
+	sd->name = strdup(st->name);
+	sd->nr_fields = st->nr_members;
+	sd->fields = xcalloc(st->nr_members, sizeof(struct gsave_field_def));
+
+	for (int i = 0; i < st->nr_members; i++) {
+		sd->fields[i].type = st->members[i].type.data;
+		sd->fields[i].name = strdup(st->members[i].name);
+	}
+
+	return n;
+}
+
+int32_t gsave_get_struct_def(struct gsave *gs, const char *name)
+{
+	for (int i = 0; i < gs->nr_struct_defs; i++) {
+		if (!strcmp(gs->struct_defs[i].name, name))
+			return i;
+	}
+	return -1;
 }
 
 static void rsave_free_frame(struct rsave_heap_frame *f)
