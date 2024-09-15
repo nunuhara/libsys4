@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include "system4/ain.h"
 
+#define GSAVE7_EMPTY_STRING 0x7fffffff
+
 struct string;
 
 enum savefile_error {
@@ -68,6 +70,10 @@ struct gsave {
 	int32_t nr_keyvals;
 	int32_t cap_keyvals;
 	struct gsave_keyval *keyvals;
+	// version 7+
+	int32_t nr_struct_defs;
+	int32_t cap_struct_defs;
+	struct gsave_struct_def *struct_defs;
 };
 
 enum gsave_record_type {
@@ -76,8 +82,9 @@ enum gsave_record_type {
 };
 
 struct gsave_record {
-	enum gsave_record_type type;
-	char *struct_name;
+	enum gsave_record_type type;  // version <=5
+	char *struct_name;  // version <=5
+	int32_t struct_index;  // -1 for globals record. version 7+
 	int32_t nr_indices;
 	int32_t *indices;
 };
@@ -86,7 +93,7 @@ struct gsave_global {
 	enum ain_data_type type;
 	int32_t value;
 	char *name;
-	int32_t unknown;  // always 1 (removed in gsave v7, so probably unused)
+	int32_t unknown;  // version <=5, always 1?
 };
 
 struct gsave_array {
@@ -98,17 +105,29 @@ struct gsave_array {
 
 struct gsave_flat_array {
 	int32_t nr_values;
+	enum ain_data_type type;  // version 7+
 	struct gsave_array_value *values;
 };
 
 struct gsave_array_value {
 	int32_t value;
-	enum ain_data_type type;
+	enum ain_data_type type;  // version <=5
 };
 
 struct gsave_keyval {
-	enum ain_data_type type;
+	enum ain_data_type type;  // version <=5
 	int32_t value;
+	char *name;  // version <=5
+};
+
+struct gsave_struct_def {
+	char *name;
+	int32_t nr_fields;
+	struct gsave_field_def *fields;
+};
+
+struct gsave_field_def {
+	enum ain_data_type type;
 	char *name;
 };
 
@@ -123,6 +142,8 @@ int32_t gsave_add_record(struct gsave *gs, struct gsave_record *rec);
 int32_t gsave_add_string(struct gsave *gs, struct string *s);
 int32_t gsave_add_array(struct gsave *gs, struct gsave_array *array);
 int32_t gsave_add_keyval(struct gsave *gs, struct gsave_keyval *kv);
+int32_t gsave_add_struct_def(struct gsave *gs, struct ain_struct *st);
+int32_t gsave_get_struct_def(struct gsave *gs, const char *name);
 
 struct rsave_return_record {
 	int32_t return_addr;  // -1 for the dummy record at the callstack bottom
