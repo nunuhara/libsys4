@@ -113,6 +113,17 @@ void ht_foreach_value(struct hash_table *ht, void(*fun)(void*))
 	}
 }
 
+void ht_foreach(struct hash_table *ht, void(*fun)(struct ht_slot*, void*), void *data)
+{
+	for (size_t i = 0; i < ht->nr_buckets; i++) {
+		if (!ht->buckets[i])
+			continue;
+		for (size_t j = 0; j < ht->buckets[i]->nr_slots; j++) {
+			fun(&ht->buckets[i]->slots[j], data);
+		}
+	}
+}
+
 void ht_free(struct hash_table *ht)
 {
 	for (size_t i = 0; i < ht->nr_buckets; i++) {
