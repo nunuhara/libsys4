@@ -89,7 +89,7 @@ static struct afa_entry *afa_get_entry_by_basename(struct afa_archive *ar, const
 
 static struct afa_entry *afa_get_entry_by_number(struct afa_archive *ar, int no)
 {
-	if (ar->version != 1) {
+	if (!ar->has_number) {
 		return ((uint32_t)no < ar->nr_files) ? &ar->files[no] : NULL;
 	}
 
@@ -244,7 +244,7 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	}
 	entry->name->size = name_len; // fix length
 
-	if (ar->version == 1) {
+	if (ar->has_number) {
 		// XXX: Oyako Rankan is AFAv1 but all IDs are 0, which breaks load_file.
 		//      We revert to using sequential indices in this case
 		int32_t no = buffer_read_int32(in) - 1;
@@ -257,6 +257,25 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	entry->off = buffer_read_int32(in);
 	entry->size = buffer_read_int32(in);
 	return true;
+}
+
+static bool afa_determine_has_number(struct afa_archive *ar, struct buffer *in)
+{
+	if (ar->version == 1)
+		return true;
+	// The presence or absence of the ID field cannot be determined from the
+	// file header, so we need to scan the file table.
+	int nr_files = ar->nr_files;
+	while (nr_files--) {
+		if (buffer_remaining(in) < 8)
+			return false;
+		buffer_skip(in, 4);
+		uint32_t name_len = buffer_read_int32(in);
+		if (buffer_remaining(in) < name_len + 20)
+			return false;
+		buffer_skip(in, name_len + 20);
+	}
+	return buffer_remaining(in) == 0;
 }
 
 static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, string_conv_fun conv)
@@ -277,6 +296,8 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 
 	struct buffer r;
 	buffer_init(&r, table, ar->uncompressed_size);
+	ar->has_number = afa_determine_has_number(ar, &r);
+	buffer_seek(&r, 0);
 	ar->files = xcalloc(ar->nr_files, sizeof(struct afa_entry));
 	for (uint32_t i = 0; i < ar->nr_files; i++) {
 		ar->files[i].no = i;

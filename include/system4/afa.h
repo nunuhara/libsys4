@@ -44,6 +44,7 @@ struct afa_archive {
 	uint32_t data_start;
 	uint32_t compressed_size;
 	uint32_t uncompressed_size;
+	bool has_number;
 	uint32_t nr_files;
 	struct afa_entry *files;
 	uint32_t data_size;
