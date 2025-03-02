@@ -59,40 +59,53 @@ static long get_file_size(FILE *fp)
 }
 
 /* Get the size of the pointer table and the link table. */
-static bool get_table_sizes(FILE *fp, int *ptrsize_out, int *mapsize_out)
+static bool get_table_sizes(struct ald_archive *archive, bool detect_magic, FILE *fp, int *ptrsize_out, int *mapsize_out)
 {
-	uint8_t b[6];
+	uint8_t header[6];
 
 	// read top 6 bytes
 	fseek(fp, 0L, SEEK_SET);
-	if (fread(b, 1, 6, fp) != 6)
+	if (fread(header, 1, 6, fp) != 6)
 		return false;
 
-	// un-obfuscate the first 3 bytes if necessary
-	switch (b[2]) {
-	case 0x44:  // Sengoku Rance DL edition, Haruka DL edition
-		b[0] -= 0x40;
-		b[1] -= 0x4c;
-		b[2] = 0x00;
-		break;
-	case 0x14:  // GALZOO island DL edition
-		b[0] -= 0x17;
-		b[1] -= 0x1c;
-		b[2] = 0x00;
-		break;
+	if (detect_magic && header[2] != 0) {
+		// Find the boundary between the pointer table and the link table,
+		// assuming that the pointer table is sorted in ascending order.
+		int link_table_end = LittleEndian_get3B(header, 3) << 8;
+		int prev = -1;
+		uint8_t buf[4];
+		for (int i = 6; i < link_table_end; i += 3) {
+			if (fread(buf, 1, 3, fp) != 3)
+				return false;
+			int n = LittleEndian_get3B(buf, 0);
+			if (prev < n) {
+				prev = n;
+				continue;
+			}
+			LittleEndian_putDW(buf, 0, (i + 0xff) >> 8);
+			archive->magic[0] = header[0] - buf[0];
+			archive->magic[1] = header[1] - buf[1];
+			archive->magic[2] = header[2] - buf[2];
+			break;
+		}
+		if (archive->magic[2] == 0)
+			return false;
 	}
+	header[0] -= archive->magic[0];
+	header[1] -= archive->magic[1];
+	header[2] -= archive->magic[2];
 
 	// get ptrsize and mapsize
-	int ptrsize = LittleEndian_get3B(b, 0);
+	int ptrsize = LittleEndian_get3B(header, 0);
 	if (ptrsize_out)
 		*ptrsize_out = ptrsize;
 	if (mapsize_out)
-		*mapsize_out = LittleEndian_get3B(b, 3) - ptrsize;
+		*mapsize_out = LittleEndian_get3B(header, 3) - ptrsize;
 	return true;
 }
 
 /* Check validity of file. */
-static bool file_check(FILE *fp)
+static bool file_check(struct ald_archive *archive, int volume, FILE *fp)
 {
 	int mapsize, ptrsize;
 	long filesize;
@@ -101,7 +114,7 @@ static bool file_check(FILE *fp)
 	filesize = (get_file_size(fp) + 255) >> 8;
 
 	// get ptrsize and mapsize
-	if (!get_table_sizes(fp, &ptrsize, &mapsize))
+	if (!get_table_sizes(archive, volume == 0, fp, &ptrsize, &mapsize))
 		return false;
 
 	// check that sizes are valid
@@ -119,7 +132,7 @@ static void get_filemap(struct ald_archive *archive, FILE *fp)
 	int mapsize, ptrsize;
 
 	// get ptrsize and mapsize
-	get_table_sizes(fp, &ptrsize, &mapsize);
+	get_table_sizes(archive, false, fp, &ptrsize, &mapsize);
 
 	// allocate read buffer
 	b = malloc(mapsize * 256);
@@ -151,7 +164,7 @@ static void get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 	int ptrsize, filecnt;
 
 	// get ptrmap size
-	get_table_sizes(fp, &ptrsize, NULL);
+	get_table_sizes(archive, false, fp, &ptrsize, NULL);
 
 	// estimate number of entries in ptrmap
 	filecnt = (ptrsize * 256) / 3;
@@ -378,7 +391,7 @@ struct archive *ald_open_conv(char **files, int count, int flags, int *error, ch
 			goto exit_err;
 		}
 		// check if it's a valid archive
-		if (!file_check(fp)) {
+		if (!file_check(ar, i, fp)) {
 			*error = ARCHIVE_BAD_ARCHIVE_ERROR;
 			fclose(fp);
 			goto exit_err;
@@ -417,11 +430,9 @@ struct archive *ald_open_conv(char **files, int count, int flags, int *error, ch
 			}
 		}
 	}
-	int c = 0;
 	for (int i = 0; i < ar->maxfile; i++) {
 		if (ar->map_disk[i] < 0 || ar->map_ptr[i] < 0)
 			continue;
-		c++;
 	}
 	ar->ar.mmapped = flags & ARCHIVE_MMAP;
 	ar->nr_files = count;
