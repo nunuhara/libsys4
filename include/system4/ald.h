@@ -39,6 +39,8 @@ struct ald_archive {
 		char *name;
 		FILE *fp;
 	} files[ALD_FILEMAX];
+	// magic number added to the first 3 bytes of the archive
+	uint8_t magic[3];
 	// upper limit on how many files could be referenced by this archive
 	int maxfile;
 	// file numbers (from the file map)
