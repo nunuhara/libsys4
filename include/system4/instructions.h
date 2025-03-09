@@ -316,8 +316,8 @@ enum opcode
         SH_LOC_LT_IMM_OR_LOC_GE_IMM,
         // instruction names are known, exact order of them are guesses after this point
         A_SORT_MEM,
-        DG_ADD,
         DG_SET,
+        DG_ADD,
         DG_CALL,
         DG_NUMOF,
         DG_EXIST,

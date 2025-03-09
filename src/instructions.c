@@ -386,8 +386,8 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( SH_LOC_LT_IMM_OR_LOC_GE_IMM,       3, (T_LOCAL, T_INT, T_INT),     (), (T_INT) ),
 
         TODO ( A_SORT_MEM,         0, (),              (T_PAGE, T_VAR, T_INT), () ),
-        TODO ( DG_ADD,             0, (),              (), () ),
-        TODO ( DG_SET,             0, (),              (T_PAGE, T_PAGE, T_FUNC), () ),
+        OP   ( DG_SET,             0, (),              (T_PAGE, T_PAGE, T_FUNC), () ),
+        OP   ( DG_ADD,             0, (),              (T_PAGE, T_PAGE, T_FUNC), () ),
         JMP  ( DG_CALL,            2, (T_DLG, T_ADDR), (), () ),
         OP   ( DG_NUMOF,           0, (),              (T_PAGE), (T_INT) ),
         TODO ( DG_EXIST,           0, (),              (), () ),
