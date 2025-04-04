@@ -123,7 +123,15 @@ uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *siz
 
 	*size = g->height * g->height * 4; // FIXME: determine real bound
 	uint8_t *data = xmalloc(*size);
-	int rv = uncompress(data, size, fnl->data + g->data_pos, g->data_compsize);
+
+	fseek(fnl->file, g->data_pos, SEEK_SET);
+	uint8_t *compressed_data = xmalloc(g->data_compsize);
+	if (fread(compressed_data, g->data_compsize, 1, fnl->file) != 1)
+		ERROR("Failed to read compressed data");
+
+	int rv = uncompress(data, size, compressed_data, g->data_compsize);
+	free(compressed_data);
+
 	if (rv != Z_OK) {
 		if (rv == Z_BUF_ERROR)
 			ERROR("uncompress failed: Z_BUF_ERROR");
@@ -160,32 +168,47 @@ static void fnl_read_font(struct buffer *r, struct fnl_font *dst)
 
 struct fnl *fnl_open(const char *path)
 {
-	size_t filesize;
+	uint8_t *index_buf = NULL;
 	struct fnl *fnl = xcalloc(1, sizeof(struct fnl));
-	fnl->data = file_read(path, &filesize);
-
-	if (fnl->data[0] != 'F' || fnl->data[1] != 'N' || fnl->data[2] != 'A' || fnl->data[3] != '\0')
+	fnl->file = file_open_utf8(path, "rb");
+	if (!fnl->file)
 		goto err;
 
+	uint8_t header[16];
+	if (fread(header, sizeof(header), 1, fnl->file) != 1)
+		goto err;
 	struct buffer r;
-	buffer_init(&r, fnl->data, filesize);
-	buffer_skip(&r, 4);
+	buffer_init(&r, header, sizeof(header));
+	if (!buffer_check_bytes(&r, "FNA\0", 4))
+		goto err;
+
 	fnl->uk = buffer_read_int32(&r);
 	if (fnl->uk != 0)
 		WARNING("Unexpected value for fnl->uk: %d", fnl->uk);
 
 	fnl->filesize = buffer_read_int32(&r);
-	fnl->data_offset = buffer_read_int32(&r);
-	fnl->nr_fonts = buffer_read_int32(&r);
+	fnl->index_size = buffer_read_int32(&r);
 
+	index_buf = xmalloc(fnl->index_size);
+	if (fread(index_buf, fnl->index_size, 1, fnl->file) != 1)
+		goto err;
+	buffer_init(&r, index_buf, fnl->index_size);
+
+	fnl->nr_fonts = buffer_read_int32(&r);
 	fnl->fonts = xcalloc(fnl->nr_fonts, sizeof(struct fnl_font));
 	for (size_t i = 0; i < fnl->nr_fonts; i++) {
 		fnl->fonts[i].fnl = fnl;
 		fnl_read_font(&r, &fnl->fonts[i]);
 	}
+	if (buffer_remaining(&r) != 0)
+		WARNING("Buffer not empty after reading fonts: %zu bytes left", buffer_remaining(&r));
+	free(index_buf);
 	return fnl;
 err:
-	free(fnl->data);
+	if (index_buf)
+		free(index_buf);
+	if (fnl->file)
+		fclose(fnl->file);
 	free(fnl);
 	return NULL;
 }
@@ -200,6 +223,6 @@ void fnl_free(struct fnl *fnl)
 		free(font->faces);
 	}
 	free(fnl->fonts);
-	free(fnl->data);
+	fclose(fnl->file);
 	free(fnl);
 }
