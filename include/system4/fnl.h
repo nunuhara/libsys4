@@ -21,10 +21,10 @@
 #include <stdio.h>
 
 struct fnl {
-	uint8_t *data;
+	FILE *file;
 	uint32_t filesize;
 	uint32_t uk;
-	uint32_t data_offset;
+	uint32_t index_size;
 	uint32_t nr_fonts;
 	struct fnl_font *fonts;
 
