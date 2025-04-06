@@ -1,14 +1,11 @@
-# CMakeLists.txt for Android build
-
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.14...4.0)
 project(libsys4 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
+find_package(ZLIB REQUIRED)
 find_package(libjpeg-turbo REQUIRED)
 find_package(WebP REQUIRED)
-
-# Assume that libpng is built and installed by upper level CMakeLists.txt
-include(${CMAKE_STAGING_PREFIX}/lib/libpng/libpng16.cmake)
+find_package(PNG REQUIRED)
 
 find_package(FLEX)
 find_package(BISON)
@@ -65,4 +62,11 @@ target_sources(sys4 PRIVATE
   )
 
 target_link_libraries(sys4 PRIVATE
-  m z log libjpeg-turbo::turbojpeg-static WebP::webp png_static)
+  m ZLIB::ZLIB libjpeg-turbo::turbojpeg-static WebP::webp PNG::PNG)
+
+if (ANDROID)
+  target_link_libraries(sys4 PRIVATE log)
+endif()
+if (APPLE)
+  target_link_libraries(sys4 PRIVATE "-framework CoreFoundation")
+endif()
