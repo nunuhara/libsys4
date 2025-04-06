@@ -3,8 +3,12 @@ project('libsys4', 'c',
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 
 static_libs = false
+platform_deps = []
 if host_machine.system() == 'windows'
     static_libs = true
+endif
+if host_machine.system() == 'darwin'
+    platform_deps = dependency('appleframeworks', modules : 'CoreFoundation')
 endif
 
 zlib = dependency('zlib', static : static_libs)
@@ -66,7 +70,7 @@ system4 += flexgen.process('src/ini_lexer.l')
 system4 += bisongen.process('src/ini_parser.y')
 
 libsys4 = library('sys4', system4,
-                  dependencies : [libm, zlib, tj, webp, png],
+                  dependencies : [libm, zlib, tj, webp, png] + platform_deps,
                   include_directories : [inc, local_inc],
                   install : true)
 
