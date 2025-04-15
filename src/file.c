@@ -43,6 +43,44 @@
 #include <emscripten.h>
 #endif
 
+#ifdef __APPLE__
+
+// Normalizes a UTF-8 encoded file name to Unicode NFC (Normalization Form
+// Composed). This is necessary because Apple file systems store file names
+// in NFD (Normalization Form Decomposed), which can cause issues when
+// comparing file names, especially for characters like 'が' (U+304C) vs.
+// 'が' (U+304B U+3099).
+static char *normalize_to_nfc(const char *str)
+{
+	CFStringRef cfstr = CFStringCreateWithCString(kCFAllocatorDefault, str, kCFStringEncodingUTF8);
+	CFMutableStringRef normalized = CFStringCreateMutableCopy(kCFAllocatorDefault, 0, cfstr);
+	CFStringNormalize(normalized, kCFStringNormalizationFormC);
+	CFIndex utf16_len = CFStringGetLength(normalized);
+	CFIndex len = CFStringGetMaximumSizeForEncoding(utf16_len, kCFStringEncodingUTF8);
+	char *buf = xmalloc(len + 1);
+	CFStringGetCString(normalized, buf, len + 1, kCFStringEncodingUTF8);
+	CFRelease(normalized);
+	CFRelease(cfstr);
+	return buf;
+}
+
+#elif defined(__EMSCRIPTEN__)
+
+// Normalization is needed, for macOS and iOS Safari.
+EM_JS(char*, normalize_to_nfc, (const char *str), {
+	return stringToNewUTF8(UTF8ToString(str).normalize('NFC'));
+});
+
+#else
+
+// No normalization needed on other platforms.
+static char *normalize_to_nfc(const char *str)
+{
+	return xstrdup(str);
+}
+
+#endif
+
 #ifdef _WIN32
 static int make_dir(const char *path, possibly_unused int mode)
 {
@@ -169,44 +207,6 @@ char *path_basename(const char *path)
 }
 
 #else
-
-#ifdef __APPLE__
-
-// Normalizes a UTF-8 encoded file name to Unicode NFC (Normalization Form
-// Composed). This is necessary because Apple file systems store file names
-// in NFD (Normalization Form Decomposed), which can cause issues when
-// comparing file names, especially for characters like 'が' (U+304C) vs.
-// 'が' (U+304B U+3099).
-static char *normalize_to_nfc(const char *str)
-{
-	CFStringRef cfstr = CFStringCreateWithCString(kCFAllocatorDefault, str, kCFStringEncodingUTF8);
-	CFMutableStringRef normalized = CFStringCreateMutableCopy(kCFAllocatorDefault, 0, cfstr);
-	CFStringNormalize(normalized, kCFStringNormalizationFormC);
-	CFIndex utf16_len = CFStringGetLength(normalized);
-	CFIndex len = CFStringGetMaximumSizeForEncoding(utf16_len, kCFStringEncodingUTF8);
-	char *buf = xmalloc(len + 1);
-	CFStringGetCString(normalized, buf, len + 1, kCFStringEncodingUTF8);
-	CFRelease(normalized);
-	CFRelease(cfstr);
-	return buf;
-}
-
-#elif defined(__EMSCRIPTEN__)
-
-// Normalization is needed, for macOS and iOS Safari.
-EM_JS(char*, normalize_to_nfc, (const char *str), {
-	return stringToNewUTF8(UTF8ToString(str).normalize('NFC'));
-});
-
-#else
-
-// No normalization needed on other platforms.
-static char *normalize_to_nfc(const char *str)
-{
-	return xstrdup(str);
-}
-
-#endif
 
 #define make_dir(path, mode) mkdir(path, mode)
 
