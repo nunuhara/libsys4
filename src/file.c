@@ -126,7 +126,12 @@ char *realpath_utf8(const char *upath)
 	if (!_wfullpath(realpath, relpath, PATH_MAX)) {
 		return NULL;
 	}
-	return wchar_to_utf8(realpath);
+	char *utf8 = wchar_to_utf8(realpath);
+	for (int i = 0; utf8[i]; i++) {
+		if (utf8[i] == '\\')
+			utf8[i] = '/';
+	}
+	return utf8;
 }
 
 int remove_utf8(const char *path)
