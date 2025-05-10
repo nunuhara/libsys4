@@ -36,6 +36,7 @@ void *ht_get(struct hash_table *ht, const char *key, void *dflt);
 bool _ht_get(struct hash_table *ht, const char *key, void **out);
 struct ht_slot *ht_put(struct hash_table *ht, const char *key, void *dflt);
 void ht_foreach_value(struct hash_table *ht, void(*fun)(void*));
+void ht_foreach(struct hash_table *ht, void(*fun)(struct ht_slot*, void*), void *data);
 
 /*
  * Integer-keyed hash tables. These functions should not be used together
