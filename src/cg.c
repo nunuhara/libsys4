@@ -206,6 +206,8 @@ struct cg *cg_load_file(const char *filename)
 {
 	size_t buf_size;
 	uint8_t *buf = file_read(filename, &buf_size);
+	if (!buf)
+		return NULL;
 	struct cg *cg = cg_load_internal(buf, buf_size, NULL);
 	free(buf);
 	return cg;
