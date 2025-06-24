@@ -24,6 +24,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/ald.h"
@@ -126,7 +127,7 @@ static bool file_check(struct ald_archive *archive, int volume, FILE *fp)
 }
 
 /* Read the file map of an ALD file into a `struct ald_archive`. */
-static void get_filemap(struct ald_archive *archive, FILE *fp)
+static bool get_filemap(struct ald_archive *archive, FILE *fp)
 {
 	uint8_t *b;
 	int mapsize, ptrsize;
@@ -139,7 +140,11 @@ static void get_filemap(struct ald_archive *archive, FILE *fp)
 
 	// read filemap
 	fseek(fp, ptrsize * 256L, SEEK_SET);
-	fread(b, 256, mapsize, fp);
+	if (fread(b, 256 * mapsize, 1, fp) != 1) {
+		WARNING("fread failed: %s", strerror(errno));
+		free(b);
+		return false;
+	}
 
 	// get max file number from mapdata
 	archive->maxfile = (mapsize * 256) / 3;
@@ -154,11 +159,11 @@ static void get_filemap(struct ald_archive *archive, FILE *fp)
 	}
 
 	free(b);
-	return;
+	return true;
 }
 
 /* Read the pointer map of an ALD file into a `struct ald_archive`. */
-static void get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
+static bool get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 {
 	uint8_t *b;
 	int ptrsize, filecnt;
@@ -174,7 +179,11 @@ static void get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 
 	// read pointers
 	fseek(fp, 0L, SEEK_SET);
-	fread(b, 256, ptrsize, fp);
+	if (fread(b, 256 * ptrsize, 1, fp) != 1) {
+		WARNING("fread failed: %s", strerror(errno));
+		free(b);
+		return false;
+	}
 
 	// allocate pointers buffer
 	archive->fileptr[disk] = calloc(filecnt, sizeof(int));
@@ -185,7 +194,7 @@ static void get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 	}
 
 	free(b);
-	return;
+	return true;
 }
 
 static int _ald_get(struct ald_archive *ar, int no, int *disk_out, int *dataptr_out)
@@ -249,13 +258,24 @@ struct archive_data *ald_get_descriptor(struct archive *_ar, int no)
 
 		// read header size, file size
 		fseek(fp, dfile->dataptr, SEEK_SET);
-		fread(hdr, 16, 1, fp);
+		if (fread(hdr, 16, 1, fp) != 1) {
+			WARNING("fread failed: %s", strerror(errno));
+			free(hdr);
+			free(dfile);
+			return NULL;
+		}
 		dfile->hdr_size = LittleEndian_getDW(hdr, 0);
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
 
 		// read name
 		dfile->data.name = xcalloc(dfile->hdr_size-16, 1);
-		fread(dfile->data.name, dfile->hdr_size-16, 1, fp);
+		if (fread(dfile->data.name, dfile->hdr_size-16, 1, fp) != 1) {
+			WARNING("fread failed: %s", strerror(errno));
+			free(dfile->data.name);
+			free(hdr);
+			free(dfile);
+			return NULL;
+		}
 
 		free(hdr);
 	}
@@ -310,9 +330,14 @@ static bool ald_load_file(struct archive_data *data)
 		data->data = xmalloc(data->size);
 
 		fseek(fp, dfile->dataptr + dfile->hdr_size, SEEK_SET);
-		fread(data->data, data->size, 1, fp);
+		if (fread(data->data, data->size, 1, fp) != 1) {
+			WARNING("fread failed: %s", strerror(errno));
+			free(data->data);
+			data->data = NULL;
+			return false;
+		}
 	}
-	return data;
+	return true;
 }
 
 static struct archive_data *ald_copy_descriptor(struct archive_data *_src)
@@ -398,11 +423,19 @@ struct archive *ald_open_conv(char **files, int count, int flags, int *error, ch
 		}
 		// get file map, if we haven't already
 		if (!gotmap) {
-			get_filemap(ar, fp);
+			if (!get_filemap(ar, fp)) {
+				*error = ARCHIVE_FILE_ERROR;
+				fclose(fp);
+				goto exit_err;
+			}
 			gotmap = true;
 		}
 		// get pointer map
-		get_ptrmap(ar, fp, i);
+		if (!get_ptrmap(ar, fp, i)) {
+			*error = ARCHIVE_FILE_ERROR;
+			fclose(fp);
+			goto exit_err;
+		}
 		// get file size for mmap
 		filesize = get_file_size(fp);
 		// copy filename

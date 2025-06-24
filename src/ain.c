@@ -1304,7 +1304,11 @@ uint8_t *ain_read(const char *path, long *len, int *error)
 
 	// read AIN file into memory
 	buf = xmalloc(*len + 4); // why +4?
-	fread(buf, 1, *len, fp);
+	if (fread(buf, *len, 1, fp) != 1) {
+		*error = AIN_FILE_ERROR;
+		fclose(fp);
+		goto err;
+	}
 	fclose(fp);
 
 	// check magic
