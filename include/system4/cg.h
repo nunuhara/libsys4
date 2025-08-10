@@ -40,6 +40,7 @@ enum cg_type {
 	ALCG_DCF     = 8,
 	ALCG_JPEG    = 9,
 	ALCG_PCF     = 10,
+	ALCG_ROU     = 11,
 	_ALCG_NR_FORMATS
 };
 
