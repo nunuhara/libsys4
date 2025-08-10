@@ -251,7 +251,9 @@ void qnt_extract(const uint8_t *data, struct cg *cg)
 	qnt_init_metrics(&qnt, &cg->metrics);
 
 	uint8_t *pixels = xcalloc(3, (qnt.width+10) * (qnt.height+10));
-	extract_pixel(&qnt, pixels, data + qnt.hdr_size);
+	if (qnt.pixel_size) {
+		extract_pixel(&qnt, pixels, data + qnt.hdr_size);
+	}
 
 	cg->type = ALCG_QNT;
 
