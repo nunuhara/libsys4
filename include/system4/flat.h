@@ -53,6 +53,31 @@ struct talt_entry {
 	struct talt_metadata *metadata;
 };
 
+enum flat_header_type {
+	FLAT_HDR_UNKNOWN,
+	FLAT_HDR_V1_32, // 32-bytes
+	FLAT_HDR_V2_64,
+};
+
+struct flat_header {
+	bool present;
+
+	enum flat_header_type type;
+
+	// V2-only
+	int32_t uk1; // Comes before fps in V2 only
+
+	// Common fields
+	int32_t fps;
+	int32_t game_view_width;
+	int32_t game_view_height;
+	float camera_length;
+	float meter;
+	int32_t width;
+	int32_t height;
+	int32_t uk2; // Present in V1 and V2, but explicitly skipped in earlier games
+};
+
 struct flat_data {
 	struct archive_data super;
 	size_t off;
@@ -77,6 +102,8 @@ struct flat_archive {
 	struct flat_section mtlc;
 	struct flat_section libl;
 	struct flat_section talt;
+
+	struct flat_header fh;
 
 	uint32_t nr_libl_entries;
 	struct libl_entry *libl_entries;

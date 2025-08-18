@@ -269,6 +269,65 @@ static void read_talt(struct flat_archive *ar)
 		WARNING("Junk at end of TALT section");
 }
 
+static void read_flat_hdr_v1(struct flat_archive *ar)
+{
+	if (!ar->flat.present) {
+		WARNING("FLAT section not present in archive");
+		ar->fh.present = false;
+		return;
+	}
+	ar->fh.type = FLAT_HDR_V1_32;
+
+	struct buffer r;
+	buffer_init(&r, ar->data + ar->flat.off + 8, ar->flat.size);
+
+	if (buffer_remaining(&r) < (int)(8 * 4)) {
+		WARNING("FLAT section too small: %uB", (unsigned)buffer_remaining(&r));
+		ar->fh.present = false;
+		return;
+	}
+
+	ar->fh.fps = buffer_read_int32(&r);
+	ar->fh.game_view_width = buffer_read_int32(&r);
+	ar->fh.game_view_height = buffer_read_int32(&r);
+	ar->fh.camera_length = buffer_read_float(&r);
+	ar->fh.meter = buffer_read_float(&r);
+	ar->fh.width = buffer_read_int32(&r);
+	ar->fh.height = buffer_read_int32(&r);
+	ar->fh.uk2 = buffer_read_int32(&r);
+	ar->fh.present = true;
+}
+
+static void read_flat_hdr_v2(struct flat_archive *ar)
+{
+	if (!ar->flat.present) {
+		WARNING("FLAT section not present in archive");
+		ar->fh.present = false;
+		return;
+	}
+	ar->fh.type = FLAT_HDR_V2_64;
+
+	struct buffer r;
+	buffer_init(&r, ar->data + ar->flat.off + 8, ar->flat.size);
+
+	if (buffer_remaining(&r) < (int)(9 * 4)) {
+		WARNING("FLAT section too small: %uB", (unsigned)buffer_remaining(&r));
+		ar->fh.present = false;
+		return;
+	}
+
+	ar->fh.uk1 = buffer_read_int32(&r); // V2-only
+	ar->fh.fps = buffer_read_int32(&r);
+	ar->fh.game_view_width = buffer_read_int32(&r);
+	ar->fh.game_view_height = buffer_read_int32(&r);
+	ar->fh.camera_length = buffer_read_float(&r);
+	ar->fh.meter = buffer_read_float(&r);
+	ar->fh.width = buffer_read_int32(&r);
+	ar->fh.height = buffer_read_int32(&r);
+	ar->fh.uk2 = buffer_read_int32(&r);
+	ar->fh.present = true;
+}
+
 static bool read_section(const char *magic, struct buffer *r, struct flat_section *dst)
 {
 	if (buffer_remaining(r) < 8)
@@ -313,6 +372,17 @@ struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
 
 	ar->data_size = size;
 	ar->data = data;
+
+	switch (ar->flat.size) {
+		case 32: read_flat_hdr_v1(ar); break;
+		case 64: read_flat_hdr_v2(ar); break;
+		default:
+			WARNING("Unknown FLAT header type with size %uB", (unsigned)ar->flat.size);
+			ar->fh.present = false;
+			ar->fh.type = FLAT_HDR_UNKNOWN;
+			break;
+	}
+
 	read_libl(ar);
 	read_talt(ar);
 
