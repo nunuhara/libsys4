@@ -27,6 +27,21 @@
 #include "system4/flat.h"
 #include "system4/string.h"
 
+static struct string *buffer_read_pascal_string_align4(struct buffer *r)
+{
+	int32_t len = buffer_read_int32(r);
+	if (len < 0 || buffer_remaining(r) < len) {
+		ERROR("Invalid string length %d", len);
+	}
+
+
+	struct string *s = make_string(buffer_strdata(r), len);
+	buffer_skip(r, len);
+	buffer_align(r, 4);
+	return s;
+}
+
+
 static const char *get_file_extension(int type, const char *data)
 {
 	switch (type) {
@@ -52,11 +67,47 @@ static void flat_free_data(struct archive_data *data)
 	free(data);
 }
 
+static void free_timeline(struct flat_timeline *tl)
+{
+	free_string(tl->name);
+	free_string(tl->library_name);
+	switch (tl->type) {
+		case FLAT_TIMELINE_GRAPHIC:
+			if (tl->graphic.keys) {
+				// v < 15
+				free(tl->graphic.keys);
+			}
+			if (tl->graphic.frames) {
+				// v >= 15
+				for (size_t i = 0; i < tl->frame_count; i++) {
+					free(tl->graphic.frames[i].keys);
+				}
+				free(tl->graphic.frames);
+			}
+
+			break;
+		case FLAT_TIMELINE_SCRIPT:
+			if (tl->script.keys) {
+				for (size_t i = 0; i < tl->script.count; i++) {
+					if (tl->script.keys[i].text) free_string(tl->script.keys[i].text);
+				}
+				free(tl->script.keys);
+			}
+			break;
+		default:
+			break;
+	}
+}
+
 static void flat_free(struct archive *_ar)
 {
 	struct flat_archive *ar = (struct flat_archive*)_ar;
 	if (ar->needs_free)
 		free(ar->data);
+	for (size_t i = 0; i < ar->nr_mtlc_timelines; i++) {
+		free_timeline(&ar->mtlc_timelines[i]);
+	}
+	free(ar->mtlc_timelines);
 	free(ar->libl_entries);
 	for (unsigned i = 0; i < ar->nr_talt_entries; i++) {
 		free(ar->talt_entries[i].metadata);
@@ -269,6 +320,226 @@ static void read_talt(struct flat_archive *ar)
 		WARNING("Junk at end of TALT section");
 }
 
+static void read_one_graphic_key(struct buffer *r, struct flat_key_data_graphic *out, const int version)
+{
+	if (version <= 4) {
+		out->pos_x.i = buffer_read_int32(r);
+		out->pos_y.i = buffer_read_int32(r);
+	} else {
+		out->pos_x.f = buffer_read_float(r);
+		out->pos_y.f = buffer_read_float(r);
+	}
+	out->scale_x = buffer_read_float(r);
+	out->scale_y = buffer_read_float(r);
+	out->angle_x = buffer_read_float(r);
+	out->angle_y = buffer_read_float(r);
+	out->angle_z = buffer_read_float(r);
+	out->add_r = buffer_read_int32(r);
+	out->add_g = buffer_read_int32(r);
+	out->add_b = buffer_read_int32(r);
+	out->mul_r = buffer_read_int32(r);
+	out->mul_g = buffer_read_int32(r);
+	out->mul_b = buffer_read_int32(r);
+	out->alpha = buffer_read_int32(r);
+	out->area_x = buffer_read_int32(r);
+	out->area_y = buffer_read_int32(r);
+	out->area_width = buffer_read_int32(r);
+	out->area_height = buffer_read_int32(r);
+	out->draw_filter = buffer_read_int32(r);
+	out->uk1 = (version > 8) ? buffer_read_int32(r) : 0;
+	out->origin_x = buffer_read_int32(r);
+	out->origin_y = buffer_read_int32(r);
+	out->uk2 = (version > 7) ? buffer_read_int32(r) : 0;
+	out->reverse_tb = buffer_read_int32(r) != 0;
+	out->reverse_lr = buffer_read_int32(r) != 0;
+}
+
+static size_t graphic_key_data_size(const int version)
+{
+	size_t sz = 92;
+	if ( version > 7) sz += 4;
+	if ( version > 8) sz += 4;
+	return sz;
+}
+
+static void read_graphic_tl(struct flat_timeline *tl, struct buffer *r, const int version)
+{
+	if (tl->frame_count <= 0) {
+		WARNING("Timeline has no frames");
+		return;
+	}
+
+	tl->graphic.count = 0;
+	tl->graphic.keys = NULL;
+	tl->graphic.frames = NULL;
+
+	const size_t ksz = graphic_key_data_size(version);
+
+	if (version < 15) {
+		tl->graphic.count = tl->frame_count;
+		tl->graphic.keys = xcalloc(tl->graphic.count, sizeof *tl->graphic.keys);
+
+		for (size_t i = 0; i < tl->graphic.count; i++) {
+			if (buffer_remaining(r) < ksz) {
+				WARNING("Not enough data for graphic key %zu/%d (v<15)", i, tl->frame_count);
+				tl->graphic.count = i;
+				break;
+			}
+			read_one_graphic_key(r, &tl->graphic.keys[i], version);
+		}
+
+		return;
+	}
+
+	tl->graphic.frames = xcalloc(tl->frame_count, sizeof *tl->graphic.frames);
+
+	for (size_t f = 0; f < tl->frame_count; f++) {
+		uint32_t n = buffer_read_int32(r);
+
+		tl->graphic.frames[f].count = n;
+
+		size_t need = n *ksz;
+		if (buffer_remaining(r) < need) {
+			WARNING("Frame %zu declares %u keys (%zu bytes) but only %zu bytes remain; truncating.",
+					f, n, need, buffer_remaining(r));
+			n = (int32_t)(buffer_remaining(r) / ksz);
+			tl->graphic.frames[f].count = n;
+		}
+
+		tl->graphic.frames[f].keys = xcalloc(n, sizeof *tl->graphic.frames[f].keys);
+		for (size_t i = 0; i < n; i++) {
+			read_one_graphic_key(r, &tl->graphic.frames[f].keys[i], version);
+		}
+	}
+}
+
+static void read_one_script_key(struct buffer *r, struct flat_script_key *out)
+{
+	out->frame_index = buffer_read_int32(r);
+	out->has_jump = false;
+	out->jump_frame = -1;
+	out->is_stop = false;
+	out->text = NULL;
+
+	for (;;) {
+		const int32_t op = buffer_read_int32(r);
+		switch (op) {
+			case 0: return;
+			case 1:
+				out->has_jump = true;
+				out->jump_frame = buffer_read_int32(r);
+				break;
+			case 2:
+				out->is_stop = true;
+				break;
+			case 3:
+				out->text = buffer_read_pascal_string_align4(r);
+				break;
+			default:
+				ERROR("Unknown script key operation %d", op);
+		}
+	}
+}
+
+static void read_script_tl(struct flat_timeline *tl, struct buffer *r)
+{
+	if (buffer_remaining(r) < 4) {
+		WARNING("Not enough data for script timeline");
+		return;
+	}
+	tl->script.count = buffer_read_int32(r);
+	tl->script.keys = xcalloc(tl->script.count, sizeof(struct flat_script_key));
+
+	for (size_t i = 0; i < tl->script.count; i++) {
+		read_one_script_key(r, &tl->script.keys[i]);
+	}
+}
+
+static bool parse_mtlc_payload(struct flat_archive *ar, uint8_t *data, size_t size)
+{
+	struct buffer r;
+	buffer_init(&r, data, size);
+
+	if (buffer_remaining(&r) < 4) {
+		WARNING("Not enough data for MTLC header");
+		return false;
+	}
+
+	ar->nr_mtlc_timelines = buffer_read_int32(&r);
+	ar->mtlc_timelines = xcalloc(ar->nr_mtlc_timelines, sizeof(struct flat_timeline));
+
+	for (size_t i = 0; i < ar->nr_mtlc_timelines; i++) {
+		struct flat_timeline *tl = &ar->mtlc_timelines[i];
+		tl->name = buffer_read_pascal_string_align4(&r);
+		tl->library_name = buffer_read_pascal_string_align4(&r);
+		tl->type = buffer_read_int32(&r);
+		tl->begin_frame = buffer_read_int32(&r);
+		tl->frame_count = buffer_read_int32(&r);
+
+		switch (tl->type) {
+			case FLAT_TIMELINE_GRAPHIC:
+				read_graphic_tl(tl, &r, ar->fh.version);
+				break;
+			case FLAT_TIMELINE_SCRIPT:
+				read_script_tl(tl, &r);
+				break;
+			case FLAT_TIMELINE_SOUND:
+				WARNING("Unimplemented timeline SOUND");
+				ar->nr_mtlc_timelines = i;
+				return true; // Parsed as much as we could
+			default:
+				WARNING("Unknown MTLC timeline type %d", tl->type);
+				ar->nr_mtlc_timelines = i;
+				return true; // Parsed as much as we could
+		}
+	}
+
+	if (r.index != size)
+		WARNING("Junk at end of MTLC section");
+
+	return true;
+}
+
+
+static void read_mtlc(struct flat_archive *ar)
+{
+	if (!ar->mtlc.present)
+		return;
+	if (!ar->fh.present) {
+		WARNING("Cannot read MTLC section without valid FLAT header");
+		return;
+	}
+
+	const bool is_compressed = ar->fh.version >= 4;
+
+	uint8_t *payload = ar->data + ar->mtlc.off + 8;
+	size_t payload_size = ar->mtlc.size;
+
+	if (!is_compressed) {
+		if (!parse_mtlc_payload(ar, payload, payload_size)) {
+			WARNING("Failed to parse uncompressed MTLC section");
+		}
+		return;
+	}
+
+	struct buffer r;
+	buffer_init(&r, payload, ar->mtlc.size);
+
+	unsigned long uncompressed_size = buffer_read_int32(&r);
+
+	uint8_t *out = xmalloc(uncompressed_size);
+	int res = uncompress(out, &uncompressed_size, (uint8_t*)buffer_strdata(&r), ar->mtlc.size -4);
+	if (res != Z_OK) {
+		WARNING("uncompress failed for MTLC section");
+		free(out);
+		return;
+	}
+	if (!parse_mtlc_payload(ar, out, uncompressed_size)) {
+		WARNING("Failed to parse compressed MTLC section");
+	}
+	free(out);
+}
+
 static void read_flat_hdr_v1(struct flat_archive *ar)
 {
 	if (!ar->flat.present) {
@@ -294,7 +565,7 @@ static void read_flat_hdr_v1(struct flat_archive *ar)
 	ar->fh.meter = buffer_read_float(&r);
 	ar->fh.width = buffer_read_int32(&r);
 	ar->fh.height = buffer_read_int32(&r);
-	ar->fh.uk2 = buffer_read_int32(&r);
+	ar->fh.version = buffer_read_int32(&r);
 	ar->fh.present = true;
 }
 
@@ -316,7 +587,7 @@ static void read_flat_hdr_v2(struct flat_archive *ar)
 		return;
 	}
 
-	ar->fh.uk1 = buffer_read_int32(&r); // V2-only
+	ar->fh.version = buffer_read_int32(&r);
 	ar->fh.fps = buffer_read_int32(&r);
 	ar->fh.game_view_width = buffer_read_int32(&r);
 	ar->fh.game_view_height = buffer_read_int32(&r);
@@ -324,7 +595,7 @@ static void read_flat_hdr_v2(struct flat_archive *ar)
 	ar->fh.meter = buffer_read_float(&r);
 	ar->fh.width = buffer_read_int32(&r);
 	ar->fh.height = buffer_read_int32(&r);
-	ar->fh.uk2 = buffer_read_int32(&r);
+	ar->fh.uk1 = buffer_read_int32(&r);
 	ar->fh.present = true;
 }
 
@@ -383,6 +654,7 @@ struct flat_archive *flat_open(uint8_t *data, size_t size, int *error)
 			break;
 	}
 
+	read_mtlc(ar);
 	read_libl(ar);
 	read_talt(ar);
 
