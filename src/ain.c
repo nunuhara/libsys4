@@ -322,12 +322,12 @@ int ain_add_function(struct ain *ain, const char *name)
 	return no;
 }
 
-static void copy_type(struct ain_type *dst, struct ain_type *src)
+void ain_copy_type(struct ain_type *dst, struct ain_type *src)
 {
 	*dst = *src;
 	if (src->array_type) {
 		dst->array_type = xcalloc(1, sizeof(struct ain_type));
-		copy_type(dst->array_type, src->array_type);
+		ain_copy_type(dst->array_type, src->array_type);
 	}
 }
 
@@ -341,7 +341,7 @@ int ain_dup_function(struct ain *ain, int src_no)
 
 	*dst = *src;
 	dst->name = strdup(src->name);
-	copy_type(&dst->return_type, &src->return_type);
+	ain_copy_type(&dst->return_type, &src->return_type);
 	dst->struct_type = src->struct_type;
 	dst->enum_type = src->enum_type;
 	dst->vars = xcalloc(src->nr_vars, sizeof(struct ain_variable));
@@ -351,7 +351,7 @@ int ain_dup_function(struct ain *ain, int src_no)
 		if (src->vars[i].name2) {
 			dst->vars[i].name2 = strdup(src->vars[i].name2);
 		}
-		copy_type(&dst->vars[i].type, &src->vars[i].type);
+		ain_copy_type(&dst->vars[i].type, &src->vars[i].type);
 	}
 	func_ht_add(ain, dst_no);
 	ain->nr_functions++;
