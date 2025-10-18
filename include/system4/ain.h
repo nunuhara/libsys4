@@ -383,7 +383,7 @@ int ain_add_message(struct ain *ain, const char *str);
 int ain_add_switch(struct ain *ain);
 int ain_add_file(struct ain *ain, const char *filename);
 
-void ain_copy_type(struct ain_type *dst, struct ain_type *src);
+void ain_copy_type(struct ain_type *dst, const struct ain_type *src);
 
 void ain_free(struct ain *ain);
 void ain_free_type(struct ain_type *type);

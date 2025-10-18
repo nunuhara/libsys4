@@ -322,7 +322,7 @@ int ain_add_function(struct ain *ain, const char *name)
 	return no;
 }
 
-void ain_copy_type(struct ain_type *dst, struct ain_type *src)
+void ain_copy_type(struct ain_type *dst, const struct ain_type *src)
 {
 	*dst = *src;
 	if (src->array_type) {
