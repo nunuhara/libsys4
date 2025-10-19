@@ -197,7 +197,7 @@ struct ain_initval {
 
 struct ain_interface {
 	int32_t struct_type;
-	int32_t uk;
+	int32_t vtable_offset;
 };
 
 struct ain_struct {
@@ -210,6 +210,10 @@ struct ain_struct {
 	struct ain_variable *members;
 	int32_t nr_vmethods;
 	int32_t *vmethods;
+	// XXX: below not present in ain file
+	bool is_interface;
+	int nr_iface_methods;
+	struct ain_function_type *iface_methods;
 };
 
 struct ain_hll_argument {

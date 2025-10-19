@@ -926,7 +926,7 @@ static struct ain_struct *read_structures(struct ain_reader *r, int count, struc
 			structures[i].interfaces = xcalloc(structures[i].nr_interfaces, sizeof(struct ain_interface));
 			for (int j = 0; j < structures[i].nr_interfaces; j++) {
 				structures[i].interfaces[j].struct_type = read_int32(r);
-				structures[i].interfaces[j].uk = read_int32(r);
+				structures[i].interfaces[j].vtable_offset = read_int32(r);
 			}
 		}
 		structures[i].constructor = read_int32(r);
@@ -944,6 +944,17 @@ static struct ain_struct *read_structures(struct ain_reader *r, int count, struc
 			}
 		}
 	}
+
+	if (AIN_VERSION_GTE(ain, 11, 0)) {
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < structures[i].nr_interfaces; j++) {
+				int struct_type = structures[i].interfaces[j].struct_type;
+				assert(struct_type >= 0 && struct_type < count);
+				structures[struct_type].is_interface = true;
+			}
+		}
+	}
+
 	return structures;
 }
 
@@ -1538,6 +1549,8 @@ void ain_free_structures(struct ain *ain)
 		free(ain->structures[s].interfaces);
 		free(ain->structures[s].vmethods);
 		ain_free_variables(ain->structures[s].members, ain->structures[s].nr_members);
+		_ain_free_function_types(ain->structures[s].iface_methods,
+				ain->structures[s].nr_iface_methods);
 	}
 	free(ain->structures);
 	ain->structures = NULL;
