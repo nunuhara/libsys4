@@ -428,11 +428,13 @@ void initialize_instructions(int version)
 		instructions[S_MOD].nr_args = 1;
 		instructions[OBJSWAP].nr_args = 1;
 		instructions[DG_STR_TO_METHOD].nr_args = 1;
+		instructions[CALLMETHOD].args[0] = T_INT;
 	} else {
 		instructions[NEW].nr_args = 0;
 		instructions[CALLHLL].nr_args = 2;
 		instructions[S_MOD].nr_args = 0;
 		instructions[OBJSWAP].nr_args = 0;
 		instructions[DG_STR_TO_METHOD].nr_args = 0;
+		instructions[CALLMETHOD].args[0] = T_FUNC;
 	}
 }
