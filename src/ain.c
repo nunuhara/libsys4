@@ -83,8 +83,11 @@ static void struct_ht_add(struct ain *ain, intptr_t i)
 	kv->value = (void*)i;
 }
 
-static void init_struct_ht(struct ain *ain)
+void ain_index_structures(struct ain *ain)
 {
+	if (ain->_struct_ht) {
+		ht_free(ain->_struct_ht);
+	}
 	ain->_struct_ht = ht_create(1024);
 	for (int i = 0; i < ain->nr_structures; i++) {
 		struct_ht_add(ain, i);
@@ -1173,7 +1176,7 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 		start_section(r, &ain->STRT);
 		ain->nr_structures = read_int32(r);
 		ain->structures = read_structures(r, ain->nr_structures, ain);
-		init_struct_ht(ain);
+		ain_index_structures(ain);
 	} else if (TAG_EQ("MSG0")) {
 		start_section(r, &ain->MSG0);
 		ain->nr_messages = read_int32(r);
@@ -1464,7 +1467,7 @@ struct ain *ain_new(int major_version, int minor_version)
 	ain->strings = xcalloc(1, sizeof(struct string *));
 	ain->strings[0] = make_string("", 0);
 
-	init_struct_ht(ain);
+	ain_index_structures(ain);
 	ain_index_functions(ain);
 
 	return ain;
