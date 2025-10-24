@@ -414,7 +414,7 @@ struct instruction {
 extern const struct syscall syscalls[NR_SYSCALLS];
 extern struct instruction instructions[NR_OPCODES];
 
-void initialize_instructions(void);
+void initialize_instructions(int version);
 
 static const_pure inline int32_t instruction_width(enum opcode opcode)
 {

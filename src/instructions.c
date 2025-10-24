@@ -420,8 +420,19 @@ struct instruction instructions[NR_OPCODES] = {
 	TODO ( X_TO_STR, 1, (T_INT),        (), () ),
 };
 
-void initialize_instructions(void)
+void initialize_instructions(int version)
 {
-	// this is a dumb hack to force linking/initialization of the above
-	// arrays on Windows.
+	if (version >= 11) {
+		instructions[NEW].nr_args = 2;
+		instructions[CALLHLL].nr_args = 3;
+		instructions[S_MOD].nr_args = 1;
+		instructions[OBJSWAP].nr_args = 1;
+		instructions[DG_STR_TO_METHOD].nr_args = 1;
+	} else {
+		instructions[NEW].nr_args = 0;
+		instructions[CALLHLL].nr_args = 2;
+		instructions[S_MOD].nr_args = 0;
+		instructions[OBJSWAP].nr_args = 0;
+		instructions[DG_STR_TO_METHOD].nr_args = 0;
+	}
 }
