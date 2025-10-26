@@ -197,7 +197,17 @@ static bool get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 	return true;
 }
 
-static int _ald_get(struct ald_archive *ar, int no, int *disk_out, int *dataptr_out)
+// FIXME: This function does not work correctly at high optimization levels.
+//        the incorrect behavior can be reproduced in xsystem4 by starting a
+//        new game in Rance VI and using Sill's healing skill in the initial
+//        battle.
+//
+//        The game will check if a file exists in Rance6WA.ald with index 3132
+//        (3131), and `_ald_get` reports that it does. Then when the game tries
+//        to load the sound effect, `_ald_get` correctly reports that it does
+//        not exist, at which point the game calls `system.Error`.
+static int __attribute__((optimize("O0"))) _ald_get(struct ald_archive *ar, int no,
+		int *disk_out, int *dataptr_out)
 {
 	int disk, ptr, dataptr, dataptr2;
 
