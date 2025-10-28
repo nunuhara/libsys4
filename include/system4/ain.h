@@ -265,10 +265,15 @@ struct ain_function_type {
 	struct ain_variable *variables;
 };
 
+struct ain_enum_value {
+	char *symbol;
+	int value;
+};
+
 struct ain_enum {
 	char *name;
-	int nr_symbols;
-	char **symbols;
+	int nr_values;
+	struct ain_enum_value *values;
 };
 
 struct ain_section {

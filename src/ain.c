@@ -1104,9 +1104,12 @@ struct ain_enum *read_enums(struct ain_reader *r, int count, struct ain *ain)
 		}
 
 		int j = 0;
+		int this_value = 0xBADC0DE;
 		for_each_instruction(ain, addr, instr, ain->functions[funs->slots[0]].address, {
 			if (instr->opcode == ENDFUNC)
 				break;
+			if (instr->opcode == PUSH)
+				this_value = LittleEndian_getDW(ain->code, addr + 2);
 			if (instr->opcode != S_PUSH)
 				continue;
 
@@ -1118,9 +1121,15 @@ struct ain_enum *read_enums(struct ain_reader *r, int count, struct ain *ain)
 			if (!ain->strings[strno]->size)
 				continue;
 
-			enums[i].symbols = xrealloc(enums[i].symbols, sizeof(char*) * (j+1));
-			enums[i].symbols[j] = ain->strings[strno]->text;
-			enums[i].nr_symbols = j + 1;
+			enums[i].values = xrealloc(enums[i].values,
+					sizeof(struct ain_enum_value) * (j+1));
+			enums[i].values[j].symbol = ain->strings[strno]->text;
+			if (this_value == 0xBADC0DE)
+				WARNING("Likely incorrect inferred enum value (in enum %s)",
+						enums[i].name);
+			enums[i].values[j].value = this_value;
+			enums[i].nr_values = j + 1;
+			this_value = 0xBADC0DE;
 			j++;
 		});
 	}
@@ -1675,7 +1684,7 @@ void ain_free_enums(struct ain *ain)
 {
 	for (int i = 0; i < ain->nr_enums; i++) {
 		free(ain->enums[i].name);
-		free(ain->enums[i].symbols);
+		free(ain->enums[i].values);
 	}
 	free(ain->enums);
 	ain->enums = NULL;
