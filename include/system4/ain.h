@@ -266,7 +266,7 @@ struct ain_function_type {
 };
 
 struct ain_enum_value {
-	char *symbol;
+	struct string *symbol;
 	int value;
 };
 
@@ -385,6 +385,7 @@ int ain_dup_function(struct ain *ain, int no);
 int ain_add_global(struct ain *ain, const char *name);
 int ain_add_initval(struct ain *ain, int global_index);
 int ain_add_struct(struct ain *ain, const char *name);
+int ain_add_enum(struct ain *ain, char *name);
 int ain_add_library(struct ain *ain, const char *name);
 int ain_add_functype(struct ain *ain, const char *name);
 int ain_add_delegate(struct ain *ain, const char *name);

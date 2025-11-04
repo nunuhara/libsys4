@@ -253,6 +253,15 @@ int ain_get_enum(struct ain *ain, char *name)
 	return -1;
 }
 
+int ain_add_enum(struct ain *ain, char *name)
+{
+	int no = ain->nr_enums;
+	ain->enums = xrealloc_array(ain->enums, no, no+1, sizeof(struct ain_enum));
+	ain->enums[no].name = strdup(name);
+	ain->nr_enums++;
+	return no;
+}
+
 int ain_add_global(struct ain *ain, const char *name)
 {
 	int no = ain->nr_globals;
@@ -1123,7 +1132,7 @@ struct ain_enum *read_enums(struct ain_reader *r, int count, struct ain *ain)
 
 			enums[i].values = xrealloc(enums[i].values,
 					sizeof(struct ain_enum_value) * (j+1));
-			enums[i].values[j].symbol = ain->strings[strno]->text;
+			enums[i].values[j].symbol = string_dup(ain->strings[strno]);
 			if (this_value == 0xBADC0DE)
 				WARNING("Likely incorrect inferred enum value (in enum %s)",
 						enums[i].name);
@@ -1684,6 +1693,9 @@ void ain_free_enums(struct ain *ain)
 {
 	for (int i = 0; i < ain->nr_enums; i++) {
 		free(ain->enums[i].name);
+		for (int j = 0; j < ain->enums[i].nr_values; j++) {
+			free_string(ain->enums[i].values[j].symbol);
+		}
 		free(ain->enums[i].values);
 	}
 	free(ain->enums);
