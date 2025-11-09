@@ -448,6 +448,8 @@ static inline bool ain_is_ref_data_type(enum ain_data_type type)
 	case AIN_REF_BOOL:
 	case AIN_REF_ARRAY_BOOL:
 	case AIN_REF_LONG_INT:
+	case AIN_REF_DELEGATE:
+	case AIN_REF_ARRAY_DELEGATE:
 	case AIN_REF_ARRAY_LONG_INT:
 	case AIN_REF_ARRAY:
 	case AIN_IFACE:
