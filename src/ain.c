@@ -473,9 +473,28 @@ int ain_get_library_function(struct ain *ain, int libno, const char *name)
 {
 	assert(libno < ain->nr_libraries);
 	struct ain_library *lib = &ain->libraries[libno];
-	for (int i = 0; i < lib->nr_functions; i++) {
-		if (!strcmp(lib->functions[i].name, name))
-			return i;
+
+	// handle name#index syntax
+	size_t len;
+	long n = 0;
+	for (len = 0; name[len]; len++) {
+		if (name[len] == '#') {
+			char *endptr;
+			n = strtol(name+len+1, &endptr, 10);
+			if (!name[len+1] || *endptr || n < 0) {
+				WARNING("Invalid HLL function name: '%s'", name);
+				n = 0;
+			}
+			break;
+		}
+	}
+
+	for (int i = 0, found = 0; i < lib->nr_functions; i++) {
+		if (!strncmp(lib->functions[i].name, name, len) && lib->functions[i].name[len] == '\0') {
+			if (found == n)
+				return i;
+			found++;
+		}
 	}
 	return -1;
 }
