@@ -232,7 +232,7 @@ int cg_write(struct cg *cg, enum cg_type type, FILE *f)
 {
 	switch (type) {
 	case ALCG_QNT:
-		return qnt_write(cg, f);
+		return qnt_write_file(cg, f);
 	case ALCG_PNG:
 		return png_cg_write(cg, f);
 	case ALCG_WEBP:
@@ -241,4 +241,15 @@ int cg_write(struct cg *cg, enum cg_type type, FILE *f)
 		WARNING("encoding not supported for CG type");
 	}
 	return 0;
+}
+
+uint8_t *cg_write_mem(struct cg *cg, enum cg_type type, size_t *size_out)
+{
+	switch (type) {
+	case ALCG_QNT:
+		return qnt_write_mem(cg, size_out);
+	default:
+		WARNING("In-memory encoding not supported for CG type");
+	}
+	return NULL;
 }

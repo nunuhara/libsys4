@@ -84,6 +84,7 @@ struct cg *cg_load(struct archive *ar, int no);
 struct cg *cg_load_file(const char *filename);
 struct cg *cg_load_buffer(uint8_t *buf, size_t buf_size);
 int cg_write(struct cg *cg, enum cg_type type, FILE *f);
+uint8_t *cg_write_mem(struct cg *cg, enum cg_type type, size_t *size_out);
 void cg_free(struct cg *cg);
 
 #endif /* SYSTEM4_CG_H */

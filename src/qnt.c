@@ -405,7 +405,8 @@ static void free_bitmap_buffer(uint8_t **rows)
 	free(rows);
 }
 
-int qnt_write(struct cg *cg, FILE *f)
+static int _qnt_write(struct cg *cg, struct qnt_header *hdr_out, uint8_t **pixel_out,
+		uint8_t **alpha_out)
 {
 	struct qnt_header qnt = {
 		.hdr_size = 52,
@@ -424,17 +425,63 @@ int qnt_write(struct cg *cg, FILE *f)
 	filter(rows, cg->metrics.w, cg->metrics.h);
 	uint8_t *pixel_data = encode_pixels(&qnt, rows);
 	uint8_t *alpha_data = encode_alpha(&qnt, rows);
+	free_bitmap_buffer(rows);
 	if (!pixel_data || !alpha_data) {
 		free(pixel_data);
 		free(alpha_data);
 		return 0;
 	}
 
+	*hdr_out = qnt;
+	*pixel_out = pixel_data;
+	*alpha_out = alpha_data;
+	return 1;
+}
+
+int qnt_write_file(struct cg *cg, FILE *f)
+{
+	struct qnt_header qnt;
+	uint8_t *pixel_data, *alpha_data;
+	if (!_qnt_write(cg, &qnt, &pixel_data, &alpha_data))
+		return 0;
+
 	qnt_write_header(&qnt, f);
 	fwrite(pixel_data, qnt.pixel_size, 1, f);
-	free(pixel_data);
 	fwrite(alpha_data, qnt.alpha_size, 1, f);
+	free(pixel_data);
 	free(alpha_data);
-	free_bitmap_buffer(rows);
 	return 1;
+}
+
+uint8_t *qnt_write_mem(struct cg *cg, size_t *size_out)
+{
+	struct qnt_header qnt;
+	uint8_t *pixel_data, *alpha_data;
+	if (!_qnt_write(cg, &qnt, &pixel_data, &alpha_data))
+		return NULL;
+
+	uint8_t *dst = xmalloc(qnt.hdr_size + qnt.alpha_size + qnt.pixel_size);
+	dst[0] = 'Q';
+	dst[1] = 'N';
+	dst[2] = 'T';
+	dst[3] = '\0';
+	LittleEndian_putDW(dst, 4, 1);
+	LittleEndian_putDW(dst, 8, qnt.hdr_size);
+	LittleEndian_putDW(dst, 12, qnt.x0);
+	LittleEndian_putDW(dst, 16, qnt.y0);
+	LittleEndian_putDW(dst, 20, qnt.width);
+	LittleEndian_putDW(dst, 24, qnt.height);
+	LittleEndian_putDW(dst, 28, qnt.bpp);
+	LittleEndian_putDW(dst, 32, qnt.rsv);
+	LittleEndian_putDW(dst, 36, qnt.pixel_size);
+	LittleEndian_putDW(dst, 40, qnt.alpha_size);
+	for (int i = 44; i < qnt.hdr_size; i++)
+		dst[i] = 0;
+
+	memcpy(dst + qnt.hdr_size, pixel_data, qnt.pixel_size);
+	memcpy(dst + qnt.hdr_size + qnt.pixel_size, alpha_data, qnt.alpha_size);
+	*size_out = qnt.hdr_size + qnt.alpha_size + qnt.pixel_size;
+	free(pixel_data);
+	free(alpha_data);
+	return dst;
 }
