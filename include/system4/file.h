@@ -33,6 +33,7 @@ typedef struct stat ustat;
 #endif
 
 struct stat;
+struct string;
 
 UDIR *opendir_utf8(const char *path);
 int closedir_utf8(UDIR *dir);
@@ -54,6 +55,7 @@ int mkdir_p(const char *path);
 char *path_dirname(const char *path);
 char *path_basename(const char *path);
 char *path_join(const char *dir, const char *base);
+struct string *path_join_string(struct string *dir, struct string *base);
 char *path_get_icase(const char *path);
 
 #endif /* SYSTEM4_FILE_H */

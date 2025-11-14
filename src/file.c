@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include "system4.h"
 #include "system4/file.h"
+#include "system4/string.h"
 #include "system4/utfsjis.h"
 
 #ifdef _WIN32
@@ -361,6 +362,18 @@ char *path_join(const char *dir, const char *base)
 		path[dir_len] = '/';
 	memcpy(path + dir_len + need_sep, base, base_len+1);
 	return path;
+}
+
+struct string *path_join_string(struct string *dir, struct string *base)
+{
+	if (!dir || !dir->size)
+		return string_dup(base);
+
+	struct string *out = string_dup(dir);
+	if (dir->text[dir->size - 1] != '/')
+		string_push_back(&out, '/');
+	string_append(&out, base);
+	return out;
 }
 
 char *path_get_icase(const char *path)
