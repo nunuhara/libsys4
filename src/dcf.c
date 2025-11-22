@@ -245,7 +245,9 @@ void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive
 
 	struct cg *base_cg = dcf_get_base_cg(hdr.base_cg_name, ar);
 	if (!base_cg) {
-		WARNING("Failed to load DCF base CG");
+		char *u = sjis2utf(hdr.base_cg_name, strlen(hdr.base_cg_name));
+		WARNING("Failed to load DCF base CG: \"%s\"", u);
+		free(u);
 		qnt_extract(cg_data, cg);
 		goto cleanup;
 	}
@@ -291,4 +293,132 @@ void dcf_get_metrics(const uint8_t *data, possibly_unused size_t size, struct cg
 	if (!(data = dcf_get_qnt(data)))
 		return;
 	qnt_get_metrics(data, m);
+}
+
+uint8_t *dcf_encode(struct cg *base, struct cg *diff, const char *base_cg_name, size_t *size_out)
+{
+	if ((base->metrics.w != diff->metrics.w) || (base->metrics.h != diff->metrics.h)) {
+		WARNING("base and diff CG dimensions differ");
+		return NULL;
+	}
+
+	// compute chunk map (1=identical chunks, 0=different)
+	const int chunks_w = base->metrics.w / 16;
+	const int chunks_h = base->metrics.h / 16;
+	const int stride = base->metrics.w * 4;
+	uint8_t *_chunk_map = xmalloc(4 + chunks_w * chunks_h);
+	LittleEndian_putDW(_chunk_map, 0, chunks_w * chunks_h);
+	uint8_t *chunk_map = _chunk_map + 4;
+	memset(chunk_map, 1, chunks_w * chunks_h);
+	for (int y = 0; y < chunks_h * 16; y++) {
+		uint8_t *base_p = base->pixels + y * stride;
+		uint8_t *diff_p = diff->pixels + y * stride;
+		int chunk_y = y / 16;
+		for (int chunk_x = 0; chunk_x < chunks_w; chunk_x++, base_p += 16 * 4, diff_p += 16 * 4) {
+			// XXX: skip memcmp if we already determined chunks differ
+			// TODO: benchmark this--is it actually faster?
+			int i = chunk_y * chunks_w + chunk_x;
+			if (chunk_map[i]) {
+				if (!memcmp(base_p, diff_p, 16 * 4))
+					continue;
+				// XXX: check for case where diff is invisible
+				bool diff = false;
+				for (int x = 0; x < 16; x++) {
+					if (base_p[x*4+3] == 0 && diff_p[x*4+3] == 0)
+						continue;
+					if (memcmp(base_p+x*4, diff_p+x*4, 4)) {
+						diff = true;
+						break;
+					}
+				}
+				if (diff)
+					chunk_map[i] = 0;
+			}
+		}
+	}
+
+	// zero chunks in `diff` that are identical
+	for (int y = 0; y < chunks_h * 16; y++) {
+		uint8_t *diff_p = diff->pixels + y * stride;
+		int chunk_y = y / 16;
+		for (int chunk_x = 0; chunk_x < chunks_w; chunk_x++) {
+			if (chunk_map[chunk_y * chunks_w + chunk_x]) {
+				memset(diff_p, 0, 16 * 4);
+			}
+			diff_p += 16 * 4;
+		}
+	}
+
+	// compress _chunk map
+	int cm_fullsize = 4 + chunks_w * chunks_h;
+	unsigned long cm_compsize = compressBound(cm_fullsize);
+	uint8_t *chunkmap_compressed = xmalloc(cm_compsize);
+	int r = compress2(chunkmap_compressed, &cm_compsize, _chunk_map, cm_fullsize,
+			Z_BEST_COMPRESSION);
+	if (r != Z_OK) {
+		WARNING("compress() failed with error code %d", r);
+		free(_chunk_map);
+		free(chunkmap_compressed);
+		return NULL;
+	}
+
+	// encode `diff` to QNT
+	size_t cg_data_size;
+	uint8_t *cg_data = cg_write_mem(diff, ALCG_QNT, &cg_data_size);
+
+	// char[4] magic; // 'dcf '
+	// u32 header_size; // not including magic/size
+	// u32 version; // = 1
+	// u32 width;
+	// u32 height;
+	// u32 bpp;
+	// u32 name_len;
+	// u8[name_len] name; // encrypted
+	size_t name_len = strlen(base_cg_name);
+	size_t dcf_size = 7 * 4 + name_len;
+
+	// char[4] magic; // 'dfdl'
+	// u32 section_size; // not including magic/size
+	// u32 uncompressed_size;
+	// u8[?] compressed_chunkmap;
+	size_t dfdl_size = 4 * 3 + cm_compsize;
+
+	// char[4] magic; // 'dcgd'
+	// u32 section_size; // not including magic/size
+	// u8[?] qnt_data;
+	size_t dcgd_size = 4 * 2 + cg_data_size;
+
+	uint8_t *out = xmalloc(dcf_size + dfdl_size + dcgd_size);
+	uint8_t *dcf = out;
+	memcpy(dcf, "dcf ", 4);
+	LittleEndian_putDW(dcf, 4, dcf_size - 8);
+	LittleEndian_putDW(dcf, 8, 1);
+	LittleEndian_putDW(dcf, 12, base->metrics.w);
+	LittleEndian_putDW(dcf, 16, base->metrics.h);
+	LittleEndian_putDW(dcf, 20, 32);
+	LittleEndian_putDW(dcf, 24, name_len);
+	// encode base CG name
+	const uint8_t *base_name = (const uint8_t*)base_cg_name;
+	uint8_t rot = (name_len % 7) + 1;
+	for (int i = 0; i < name_len; i++) {
+		dcf[28 + i] = (base_name[i] >> rot) | (base_name[i] << (8-rot));
+	}
+
+	uint8_t *dfdl = out + dcf_size;
+	memcpy(dfdl, "dfdl", 4);
+	LittleEndian_putDW(dfdl, 4, dfdl_size - 8);
+	LittleEndian_putDW(dfdl, 8, cm_fullsize);
+	memcpy(dfdl + 12, chunkmap_compressed, cm_compsize);
+
+	uint8_t *dcgd = out + dcf_size + dfdl_size;
+	memcpy(dcgd, "dcgd", 4);
+	LittleEndian_putDW(dcgd, 4, dcgd_size - 8);
+	memcpy(dcgd + 8, cg_data, cg_data_size);
+
+	*size_out = dcf_size + dfdl_size + dcgd_size;
+
+	free(cg_data);
+	free(chunkmap_compressed);
+	free(_chunk_map);
+	return out;
 }
