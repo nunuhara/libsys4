@@ -33,6 +33,7 @@
 static bool ald_exists(struct archive *ar, int no);
 static struct archive_data *ald_get(struct archive *ar, int no);
 static struct archive_data *ald_get_by_name(struct archive *_ar, const char *name);
+static unsigned ald_nr_files(struct archive *ar);
 static bool ald_load_file(struct archive_data *data);
 static struct archive_data *ald_copy_descriptor(struct archive_data *src);
 static void ald_for_each(struct archive *_ar, void (*iter)(struct archive_data *data, void *user), void *user);
@@ -44,6 +45,7 @@ struct archive_ops ald_archive_ops = {
 	.get = ald_get,
 	.get_by_name = ald_get_by_name,
 	.get_by_basename = NULL,
+	.nr_files = ald_nr_files,
 	.load_file = ald_load_file,
 	.release_file = NULL,
 	.copy_descriptor = ald_copy_descriptor,
@@ -327,6 +329,18 @@ static struct archive_data *ald_get_by_name(struct archive *_ar, const char *nam
 		ald_free_data(data);
 	}
 	return NULL;
+}
+
+static unsigned ald_nr_files(struct archive *_ar)
+{
+	struct ald_archive *ar = (struct ald_archive*)_ar;
+	unsigned count = 0;
+	for (int i = 0; i < ar->maxfile; i++) {
+		int disk, dataptr;
+		if (_ald_get(ar, i, &disk, &dataptr))
+			count++;
+	}
+	return count;
 }
 
 static bool ald_load_file(struct archive_data *data)

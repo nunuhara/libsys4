@@ -29,6 +29,7 @@
 
 static bool alk_exists(struct archive *ar, int no);
 static struct archive_data *alk_get(struct archive *ar, int no);
+static unsigned alk_nr_files(struct archive *ar);
 static bool alk_load_file(struct archive_data *data);
 static void alk_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
 static void alk_free_data(struct archive_data *data);
@@ -39,6 +40,7 @@ struct archive_ops alk_archive_ops = {
 	.get = alk_get,
 	.get_by_name = NULL,
 	.get_by_basename = NULL,
+	.nr_files = alk_nr_files,
 	.load_file = alk_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,
@@ -53,6 +55,17 @@ static bool alk_exists(struct archive *_ar, int no)
 	if (no < 0 || no >= ar->nr_files)
 		return false;
 	return ar->files[no].size > 0;
+}
+
+static unsigned alk_nr_files(struct archive *_ar)
+{
+	struct alk_archive *ar = (struct alk_archive*)_ar;
+	unsigned count = 0;
+	for (int i = 0; i < ar->nr_files; i++) {
+		if (ar->files[i].size)
+			count++;
+	}
+	return count;
 }
 
 static bool alk_load_file(struct archive_data *data)

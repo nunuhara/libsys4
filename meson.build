@@ -72,8 +72,7 @@ system4 += bisongen.process('src/ini_parser.y')
 
 libsys4 = library('sys4', system4,
                   dependencies : [libm, zlib, tj, webp, png] + platform_deps,
-                  include_directories : [inc, local_inc],
-                  install : true)
+                  include_directories : [inc, local_inc])
 
 libsys4_dep = declare_dependency(include_directories : inc,
                                  link_with : libsys4)

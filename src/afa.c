@@ -39,6 +39,7 @@ static bool afa_exists_by_basename(struct archive *ar, const char *name, int *id
 static struct archive_data *afa_get(struct archive *ar, int no);
 static struct archive_data *afa_get_by_name(struct archive *ar, const char *name);
 static struct archive_data *afa_get_by_basename(struct archive *ar, const char *name);
+static unsigned afa_nr_files(struct archive *_ar);
 static bool afa_load_file(struct archive_data *data);
 static void afa_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
 static void afa_free_data(struct archive_data *data);
@@ -51,6 +52,7 @@ struct archive_ops afa_archive_ops = {
 	.get = afa_get,
 	.get_by_name = afa_get_by_name,
 	.get_by_basename = afa_get_by_basename,
+	.nr_files = afa_nr_files,
 	.load_file = afa_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,
@@ -128,6 +130,12 @@ static bool afa_exists_by_basename(struct archive *_ar, const char *name, int *i
 	if (id_out)
 		*id_out = e->no;
 	return true;
+}
+
+static unsigned afa_nr_files(struct archive *_ar)
+{
+	struct afa_archive *ar = (struct afa_archive*)_ar;
+	return ar->nr_files;
 }
 
 static bool afa_load_file(struct archive_data *data)

@@ -29,6 +29,7 @@
 
 static bool dlf_exists(struct archive *ar, int no);
 static struct archive_data *dlf_get(struct archive *ar, int no);
+static unsigned dlf_nr_files(struct archive *ar);
 static bool dlf_load_file(struct archive_data *data);
 static void dlf_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
 static void dlf_free_data(struct archive_data *data);
@@ -39,6 +40,7 @@ struct archive_ops dlf_archive_ops = {
 	.get = dlf_get,
 	.get_by_name = NULL,
 	.get_by_basename = NULL,
+	.nr_files = dlf_nr_files,
 	.load_file = dlf_load_file,
 	.release_file = NULL,
 	.copy_descriptor = NULL,
@@ -53,6 +55,17 @@ static bool dlf_exists(struct archive *_ar, int no)
 	if ((uint32_t)no >= DLF_NR_ENTRIES)
 		return false;
 	return ar->files[no].off != 0;
+}
+
+static unsigned dlf_nr_files(struct archive *_ar)
+{
+	struct dlf_archive *ar = (struct dlf_archive*)_ar;
+	unsigned count = 0;
+	for (uint32_t i = 0; i < DLF_NR_ENTRIES; i++) {
+		if (ar->files[i].off)
+			count++;
+	}
+	return count;
 }
 
 static bool dlf_load_file(struct archive_data *data)

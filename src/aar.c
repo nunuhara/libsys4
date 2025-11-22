@@ -51,6 +51,7 @@ struct ht_slot *ht_put_ignorecase(struct hash_table *ht, const char *key, void *
 static bool aar_exists(struct archive *ar, int no);
 static struct archive_data *aar_get(struct archive *ar, int no);
 static struct archive_data *aar_get_by_name(struct archive *ar, const char *name);
+static unsigned aar_nr_files(struct archive *ar);
 static bool aar_load_file(struct archive_data *data);
 static void aar_release_file(struct archive_data *data);
 static void aar_for_each(struct archive *ar, void (*iter)(struct archive_data *data, void *user), void *user);
@@ -62,6 +63,7 @@ struct archive_ops aar_archive_ops = {
 	.get = aar_get,
 	.get_by_name = aar_get_by_name,
 	.get_by_basename = NULL,
+	.nr_files = aar_nr_files,
 	.load_file = aar_load_file,
 	.release_file = aar_release_file,
 	.copy_descriptor = NULL,
@@ -100,6 +102,12 @@ static bool aar_inflate_entry(struct archive_data *data, uint8_t *buf, uint32_t 
 	data->data = out;
 	data->size = out_size;
 	return true;
+}
+
+static unsigned aar_nr_files(struct archive *_ar)
+{
+	struct aar_archive *ar = (struct aar_archive*)_ar;
+	return ar->nr_files;
 }
 
 static bool aar_load_file(struct archive_data *data)

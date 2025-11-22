@@ -45,6 +45,7 @@ struct archive_ops {
 	struct archive_data *(*get)(struct archive *ar, int no);
 	struct archive_data *(*get_by_name)(struct archive *ar, const char *name);
 	struct archive_data *(*get_by_basename)(struct archive *ar, const char *name);
+	unsigned (*nr_files)(struct archive *ar);
 	bool (*load_file)(struct archive_data *file);
 	void (*release_file)(struct archive_data *file);
 	struct archive_data *(*copy_descriptor)(struct archive_data *src);
@@ -159,6 +160,13 @@ static inline void archive_for_each(struct archive *ar, void (*iter)(struct arch
 {
 	if (ar->ops->for_each)
 		ar->ops->for_each(ar, iter, user);
+}
+
+static inline unsigned archive_nr_files(struct archive *ar)
+{
+	if (ar->ops->nr_files)
+		return ar->ops->nr_files(ar);
+	return 0;
 }
 
 /*
