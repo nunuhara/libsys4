@@ -493,6 +493,7 @@ static void parse_emitter(struct buffer *r, struct flat_emitter *em, int version
 
 static bool parse_library(struct flat *fl, struct flat_library *lib, struct buffer *r)
 {
+	lib->off = fl->libl.off + 8 + r->index;
 	if (fl->elna.present) {
 		size_t size = buffer_read_int32(r);
 		if (buffer_remaining(r) < size) {
@@ -515,7 +516,7 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 	}
 	lib->type = buffer_read_int32(r);
 	lib->size = buffer_read_int32(r);
-
+	lib->payload_off = fl->libl.off + 8 + r->index;
 
 	if (buffer_remaining(r) < lib->size) {
 		WARNING("LIBL entry has invalid size %zd while parsing library '%s'",
@@ -548,7 +549,8 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 			if (fl->hdr.version > 0) {
 				// No idea what this extra data is it reads a single int32 that is often 0 but sometimes 1
 				// Probably some kind of metadata
-				buffer_skip(&r_payload, 4);
+				lib->cg.uk_int = buffer_read_int32(&r_payload);
+				lib->payload_off += 4;
 			}
 			lib->cg.data = buffer_data(&r_payload);
 			lib->cg.size = lib->size;
@@ -598,7 +600,6 @@ static void read_libl(struct flat *fl)
 			fl->nr_libraries = i;
 			break;
 		}
-
 	}
 
 	if (r.index != fl->libl.size)
