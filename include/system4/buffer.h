@@ -60,6 +60,11 @@ void buffer_write_cstringz(struct buffer *b, const char *s);
 void buffer_write_pascal_string(struct buffer *b, struct string *s);
 void buffer_write_pascal_cstring(struct buffer *b, const char *s);
 
+static inline uint8_t *buffer_data(struct buffer *r)
+{
+	return r->buf + r->index;
+}
+
 static inline char *buffer_strdata(struct buffer *r)
 {
 	return (char*)r->buf + r->index;

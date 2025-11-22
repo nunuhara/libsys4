@@ -20,22 +20,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "system4/archive.h"
 
-enum flat_data_type {
-	FLAT_CG  = 2,
-	FLAT_ZLIB = 5,
+
+enum flat_error {
+	FLAT_SUCCESS = 0,
+	FLAT_BAD_SECTION = 1,
 };
 
-struct libl_entry {
-	uint32_t unknown_size;
-	uint32_t unknown_off;
-	enum flat_data_type type;
-	bool has_front_pad;
-	uint32_t front_pad;
-	uint32_t size;
-	uint32_t off;
-};
 
 struct talt_metadata {
 	uint32_t unknown1_size;
@@ -153,13 +144,108 @@ struct flat_timeline {
 	};
 };
 
-struct flat_data {
-	struct archive_data super;
-	size_t off;
-	size_t size;
-	enum flat_data_type type;
-	bool inflated;
+struct flat_stop_motion {
+	struct string *library_name;
+	int32_t span;
+	int32_t loop_type;
 };
+
+struct flat_emitter {
+	// uk stands for unknown field I don't know the meaning of it
+	struct string *library_name;
+	int32_t uk_int1;
+	int32_t create_pos_type;
+	float create_pos_length;
+	float create_pos_length2;
+	int32_t create_count;
+	int32_t particle_length;
+	float begin_size_rate;
+	float uk1_size_rate;
+	float end_size_rate;
+	float uk2_size_rate;
+	float begin_x_size_rate;
+	float uk1_x_size_rate;
+	float end_x_size_rate;
+	float uk2_x_size_rate;
+	float begin_y_size_rate;
+	float uk1_y_size_rate;
+	float end_y_size_rate;
+	float uk2_y_size_rate;
+	bool uk_bool1;
+	int32_t direction_type;
+	float direction_x;
+	float direction_y;
+	float direction_z;
+	float direction_angle;
+	bool is_emitter_connect_type;
+	int32_t uk_int2;
+	int32_t uk_int3;
+	int32_t uk_int4;
+	int32_t uk_int5;
+	int32_t uk_int6;
+	int32_t uk_int7;
+	int32_t uk_int8;
+	int32_t uk_int9;
+	int32_t uk_int10;
+	int32_t uk_int11;
+	float speed;
+	float speed_rate;
+	float move_length;
+	float mobe_curve;
+	float uk_float1;
+	bool is_fall;
+	float width;
+	float air_resistance;
+	bool uk_bool2;
+	float begin_x_angle;
+	float uk1_x_angle;
+	float end_x_angle;
+	float uk2_x_angle;
+	float begin_y_angle;
+	float uk1_y_angle;
+	float end_y_angle;
+	float uk2_y_angle;
+	float begin_z_angle;
+	float uk1_z_angle;
+	float end_z_angle;
+	float uk2_z_angle;
+	bool uk_bool3;
+	int32_t fade_in_frame;
+	int32_t fade_out_frame;
+	int32_t draw_filter_type;
+	int32_t rand_base;
+	int32_t end_pos_type;
+	float end_pos_x;
+	float end_pos_y;
+	float end_pos_z;
+	struct string *end_cg_name;
+};
+
+enum flat_library_type {
+	FLAT_LIB_CG = 2,
+	FLAT_LIB_MEMORY = 4,
+	FLAT_LIB_TIMELINE = 5,
+	FLAT_LIB_STOP_MOTION = 6,
+	FLAT_LIB_EMITTER = 7,
+};
+
+struct flat_library {
+	struct string *name;
+	enum flat_library_type type;
+	size_t size;
+	uint8_t *decoded; // only for ELNA-encrypted data.
+	union {
+		struct { const uint8_t *data; size_t size; int32_t uk_int; } cg;
+		struct { struct flat_timeline *timelines; size_t nr_timelines; } timeline;
+		struct flat_stop_motion stop_motion;
+		struct flat_emitter emitter;
+		// TODO: memory
+	};
+	// XXX: for alice-tools
+	uint32_t off;
+	uint32_t payload_off;
+};
+
 
 struct flat_section {
 	bool present;
@@ -167,9 +253,7 @@ struct flat_section {
 	size_t size;
 };
 
-struct flat_archive {
-	struct archive ar;
-
+struct flat {
 	// file map
 	struct flat_section elna;
 	struct flat_section flat;
@@ -178,22 +262,28 @@ struct flat_archive {
 	struct flat_section libl;
 	struct flat_section talt;
 
-	struct flat_header fh;
+	struct flat_header hdr;
 
-	uint32_t nr_libl_entries;
-	struct libl_entry *libl_entries;
-	uint32_t nr_talt_entries;
+	// From the LIBL section
+	size_t nr_libraries;
+	struct flat_library *libraries;
+
+	// From the mtlc section
+	size_t nr_timelines;
+	struct flat_timeline *timelines;
+
+	size_t nr_talt_entries;
 	struct talt_entry *talt_entries;
-	uint32_t nr_mtlc_timelines;
-	struct flat_timeline *mtlc_timelines;
 
 	bool needs_free;
 	size_t data_size;
 	uint8_t *data;
 };
 
-struct flat_archive *flat_new(void);
-struct flat_archive *flat_open(uint8_t *data, size_t size, int *error);
-struct flat_archive *flat_open_file(const char *path, int flags, int *error);
+
+
+
+struct flat *flat_open(uint8_t *data, size_t size, int *error);
+void flat_free(struct flat *fl);
 
 #endif /* SYSTEM4_FLAT_H */
