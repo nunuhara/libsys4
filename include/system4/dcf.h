@@ -28,6 +28,7 @@ struct archive;
 bool dcf_checkfmt(const uint8_t *data);
 void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive *ar);
 void dcf_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *m);
+char *dcf_get_base_cg_name(const uint8_t *data, size_t size);
 uint8_t *dcf_encode(struct cg *base, struct cg *diff, const char *base_cg_name, size_t *size_out);
 
 #endif /* SYSTEM4_DCF_H */

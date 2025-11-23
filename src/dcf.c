@@ -295,6 +295,19 @@ void dcf_get_metrics(const uint8_t *data, possibly_unused size_t size, struct cg
 	qnt_get_metrics(data, m);
 }
 
+char *dcf_get_base_cg_name(const uint8_t *data, size_t size)
+{
+	struct buffer buf;
+	struct dcf_header hdr = {0};
+	buffer_init(&buf, (uint8_t*)data, size);
+	if (!dcf_read_header(&buf, &hdr)) {
+		WARNING("Failed to read DCF header");
+		return NULL;
+	}
+
+	return hdr.base_cg_name;
+}
+
 uint8_t *dcf_encode(struct cg *base, struct cg *diff, const char *base_cg_name, size_t *size_out)
 {
 	if ((base->metrics.w != diff->metrics.w) || (base->metrics.h != diff->metrics.h)) {
