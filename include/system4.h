@@ -20,6 +20,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdalign.h>
 
 // fix windows.h symbol conflict
 #undef ERROR
@@ -62,6 +63,9 @@ mem_alloc void *_xcalloc(size_t nmemb, size_t size, const char *func);
 
 #define xrealloc(ptr, size) _xrealloc(ptr, size, __func__)
 mem_alloc void *_xrealloc(void *ptr, size_t size, const char *func);
+
+#define xcalloc_aligned(nmemb, type) _xcalloc_aligned(alignof(type), (nmemb) * sizeof(type), __func__)
+mem_alloc void *_xcalloc_aligned(size_t alignment, size_t size, const char *func);
 
 #define xstrdup(str) _xstrdup(str, __func__)
 mem_alloc char *_xstrdup(const char *in, const char *func);
