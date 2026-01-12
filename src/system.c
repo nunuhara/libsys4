@@ -18,6 +18,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <malloc.h>
+#endif
+
 #ifdef __ANDROID__
 #include <android/log.h>
 #endif
@@ -53,6 +57,22 @@ mem_alloc void *_xrealloc(void *ptr, size_t size, const char *func)
 	if (!ptr) {
 		sys_error("*ERROR*(%s): Out of memory\n", func);
 	}
+	return ptr;
+}
+
+mem_alloc void *_xcalloc_aligned(size_t alignment, size_t size, const char *func)
+{
+	void *ptr;
+#ifdef _WIN32
+	// aligned_alloc is C11, but not supported by MSVC's C runtime library.
+	ptr = _aligned_malloc(size, alignment);
+#else
+	ptr = aligned_alloc(alignment, size);
+#endif
+	if (!ptr) {
+		sys_error("*ERROR*(%s): Out of memory\n", func);
+	}
+	memset(ptr, 0, size);
 	return ptr;
 }
 
