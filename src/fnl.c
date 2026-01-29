@@ -109,27 +109,28 @@ struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code)
 static void fnl_read_glyph(struct buffer *r, uint32_t height, struct fnl_glyph *dst)
 {
 	dst->height = height;
-	dst->real_width = buffer_read_u16(r);
+	dst->width = buffer_read_u16(r);
 	dst->data_pos = buffer_read_int32(r);
 	dst->data_compsize = buffer_read_int32(r);
 }
 
-uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *size)
+uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g)
 {
 	if (!g->data_pos) {
-		*size = 0;
 		return NULL;
 	}
 
-	*size = g->height * g->height * 4; // FIXME: determine real bound
-	uint8_t *data = xmalloc(*size);
+	// NOTE: The compressed data may be smaller than this. The rest of the
+	// bitmap must be filled with 0.
+	unsigned long size = fnl_glyph_stride(g) * g->height;
+	uint8_t *data = xcalloc(1, size);
 
 	fseek(fnl->file, g->data_pos, SEEK_SET);
 	uint8_t *compressed_data = xmalloc(g->data_compsize);
 	if (fread(compressed_data, g->data_compsize, 1, fnl->file) != 1)
 		ERROR("Failed to read compressed data");
 
-	int rv = uncompress(data, size, compressed_data, g->data_compsize);
+	int rv = uncompress(data, &size, compressed_data, g->data_compsize);
 	free(compressed_data);
 
 	if (rv != Z_OK) {
