@@ -67,6 +67,8 @@ mem_alloc void *_xrealloc(void *ptr, size_t size, const char *func);
 #define xcalloc_aligned(nmemb, type) _xcalloc_aligned(alignof(type), (nmemb) * sizeof(type), __func__)
 mem_alloc void *_xcalloc_aligned(size_t alignment, size_t size, const char *func);
 
+void xfree_aligned(void *ptr);
+
 #define xstrdup(str) _xstrdup(str, __func__)
 mem_alloc char *_xstrdup(const char *in, const char *func);
 
