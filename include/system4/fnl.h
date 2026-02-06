@@ -46,7 +46,7 @@ struct fnl_font_face {
 
 struct fnl_glyph {
 	uint32_t height;
-	uint16_t real_width;
+	uint16_t width;
 	uint32_t data_pos;
 	uint32_t data_compsize;
 };
@@ -58,6 +58,11 @@ unsigned fnl_char_to_index(uint16_t code);
 uint16_t fnl_index_to_char(unsigned index);
 
 struct fnl_glyph *fnl_get_glyph(struct fnl_font_face *font, uint16_t code);
-uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g, unsigned long *size);
+uint8_t *fnl_glyph_data(struct fnl *fnl, struct fnl_glyph *g);
+
+static inline uint32_t fnl_glyph_stride(struct fnl_glyph *g)
+{
+	return (g->width + 31) / 32 * 4;  // aligned to 4 bytes
+}
 
 #endif /* SYSTEM4_FNL_H */
