@@ -76,6 +76,15 @@ mem_alloc void *_xcalloc_aligned(size_t alignment, size_t size, const char *func
 	return ptr;
 }
 
+void xfree_aligned(void *ptr)
+{
+#ifdef _WIN32
+	_aligned_free(ptr);
+#else
+	free(ptr);
+#endif
+}
+
 mem_alloc char *_xstrdup(const char *in, const char *func)
 {
 	char *out = strdup(in);
