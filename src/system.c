@@ -66,6 +66,10 @@ mem_alloc void *_xcalloc_aligned(size_t alignment, size_t size, const char *func
 #ifdef _WIN32
 	// aligned_alloc is C11, but not supported by MSVC's C runtime library.
 	ptr = _aligned_malloc(size, alignment);
+#elif defined(__ANDROID__)
+	// aligned_alloc requires Android 9.0 or later.
+	if (posix_memalign(&ptr, alignment, size) != 0)
+		ptr = NULL;
 #else
 	ptr = aligned_alloc(alignment, size);
 #endif
