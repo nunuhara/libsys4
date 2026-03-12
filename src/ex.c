@@ -855,7 +855,8 @@ static struct ex_value *ex_tree_get_path(struct ex_tree *tree, const char *path)
 	}
 
 	for (unsigned i = 0; i < tree->nr_children; i++) {
-		if (!strncmp(tree->children[i].name->text, path, len)) {
+		if (tree->children[i].name->size == len &&
+		    !strncmp(tree->children[i].name->text, path, len)) {
 			if (next) {
 				return ex_tree_get_path(&tree->children[i], next+1);
 			}
@@ -872,7 +873,8 @@ static struct ex_value *_ex_get(struct ex *ex, const char *name, size_t name_len
 {
 	// TODO: use hash table
 	for (unsigned i = 0; i < ex->nr_blocks; i++) {
-		if (!strncmp(ex->blocks[i].name->text, name, name_len))
+		if (ex->blocks[i].name->size == name_len &&
+		    !strncmp(ex->blocks[i].name->text, name, name_len))
 			return &ex->blocks[i].val;
 	}
 	return NULL;
