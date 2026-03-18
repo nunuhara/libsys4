@@ -56,6 +56,7 @@ struct ex_field {
 struct ex_table {
 	uint32_t nr_fields;
 	struct ex_field *fields;
+	bool borrowed_fields;  // if true, `fields` is owned by the parent
 	uint32_t nr_columns;
 	uint32_t nr_rows;
 	struct ex_value **rows;

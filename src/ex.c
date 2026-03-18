@@ -184,6 +184,9 @@ static void _ex_read_value(struct ex_reader *r, struct ex_value *value, struct e
 			ex_read_fields(r, value->t);
 			ex_read_table(r, value->t, value->t->fields, value->t->nr_fields);
 		} else {
+			value->t->nr_fields = nr_fields;
+			value->t->fields = fields;
+			value->t->borrowed_fields = true;
 			ex_read_table(r, value->t, fields, nr_fields);
 		}
 		break;
@@ -782,7 +785,8 @@ static void ex_free_fields(struct ex_field *fields, uint32_t n)
 
 static void ex_free_table(struct ex_table *table)
 {
-	ex_free_fields(table->fields, table->nr_fields);
+	if (!table->borrowed_fields)
+		ex_free_fields(table->fields, table->nr_fields);
 	for (uint32_t i = 0; i < table->nr_rows; i++) {
 		ex_free_values(table->rows[i], table->nr_columns);
 	}
