@@ -49,6 +49,7 @@ struct ht_slot *ht_put_ignorecase(struct hash_table *ht, const char *key, void *
 }
 
 static bool aar_exists(struct archive *ar, int no);
+static bool aar_exists_by_name(struct archive *ar, const char *name, int *id_out);
 static struct archive_data *aar_get(struct archive *ar, int no);
 static struct archive_data *aar_get_by_name(struct archive *ar, const char *name);
 static unsigned aar_nr_files(struct archive *ar);
@@ -60,6 +61,7 @@ static void aar_free(struct archive *ar);
 
 struct archive_ops aar_archive_ops = {
 	.exists = aar_exists,
+	.exists_by_name = aar_exists_by_name,
 	.get = aar_get,
 	.get_by_name = aar_get_by_name,
 	.get_by_basename = NULL,
@@ -76,6 +78,17 @@ static bool aar_exists(struct archive *_ar, int no)
 {
 	struct aar_archive *ar = (struct aar_archive*)_ar;
 	return (uint32_t)no < ar->nr_files;
+}
+
+static bool aar_exists_by_name(struct archive *_ar, const char *name, int *id_out)
+{
+	struct aar_archive *ar = (struct aar_archive*)_ar;
+	struct aar_entry *e = ht_get_ignorecase(ar->ht, name, NULL);
+	if (!e)
+		return false;
+	if (id_out)
+		*id_out = e - ar->files;
+	return true;
 }
 
 static bool aar_inflate_entry(struct archive_data *data, uint8_t *buf, uint32_t size)
