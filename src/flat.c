@@ -391,33 +391,33 @@ static void parse_stop_motion(struct buffer *r, struct flat_stop_motion *sm)
 static void parse_emitter(struct buffer *r, struct flat_emitter *em, int version)
 {
 	em->library_name = buffer_read_flat_string(r);
-	em->uk_int1 = version > 0 ? buffer_read_int32(r) : 5;
+	em->particle_align = version > 0 ? buffer_read_int32(r) : 5;
 	em->create_pos_type = buffer_read_int32(r);
 	em->create_pos_length = buffer_read_float(r);
 	em->create_pos_length2 = buffer_read_float(r);
 	em->create_count = buffer_read_int32(r);
-	em->particle_length = buffer_read_int32(r);
-	em->begin_size_rate = buffer_read_float(r);
+	em->particle_lifetime = buffer_read_int32(r);
+	em->begin_scale = buffer_read_float(r);
 	if (version < 1) {
-		em->end_size_rate = buffer_read_float(r);
-		em->begin_x_size_rate = buffer_read_float(r);
-		em->end_x_size_rate = buffer_read_float(r);
-		em->begin_y_size_rate = buffer_read_float(r);
-		em->end_y_size_rate = buffer_read_float(r);
+		em->end_scale = buffer_read_float(r);
+		em->begin_x_scale = buffer_read_float(r);
+		em->end_x_scale = buffer_read_float(r);
+		em->begin_y_scale = buffer_read_float(r);
+		em->end_y_scale = buffer_read_float(r);
 	} else {
-		em->uk1_size_rate = buffer_read_float(r);
-		em->end_size_rate = buffer_read_float(r);
-		em->uk2_size_rate = buffer_read_float(r);
-		em->begin_x_size_rate = buffer_read_float(r);
-		em->uk1_x_size_rate = buffer_read_float(r);
-		em->end_x_size_rate = buffer_read_float(r);
-		em->uk2_x_size_rate = buffer_read_float(r);
-		em->begin_y_size_rate = buffer_read_float(r);
-		em->uk1_y_size_rate = buffer_read_float(r);
-		em->end_y_size_rate = buffer_read_float(r);
-		em->uk2_y_size_rate = buffer_read_float(r);
+		em->begin_scale_rand = buffer_read_float(r);
+		em->end_scale = buffer_read_float(r);
+		em->end_scale_rand = buffer_read_float(r);
+		em->begin_x_scale = buffer_read_float(r);
+		em->begin_x_scale_rand = buffer_read_float(r);
+		em->end_x_scale = buffer_read_float(r);
+		em->end_x_scale_rand = buffer_read_float(r);
+		em->begin_y_scale = buffer_read_float(r);
+		em->begin_y_scale_rand = buffer_read_float(r);
+		em->end_y_scale = buffer_read_float(r);
+		em->end_y_scale_rand = buffer_read_float(r);
 		if (version > 5) {
-			em->uk_bool1 = buffer_read_int32(r) != 0;
+			em->sync_scale_rand = buffer_read_int32(r) != 0;
 		}
 	}
 	em->direction_type = buffer_read_int32(r);
@@ -425,36 +425,35 @@ static void parse_emitter(struct buffer *r, struct flat_emitter *em, int version
 	em->direction_y = buffer_read_float(r);
 	em->direction_z = buffer_read_float(r);
 	em->direction_angle = buffer_read_float(r);
-	// TODO: Research maybe not bool in later versions sometimes not 0/1 just int
-	em->is_emitter_connect_type = buffer_read_int32(r) != 0;
+	em->parent_key_mode = buffer_read_int32(r);
 	if (version > 2) {
-		em->uk_int2 = buffer_read_int32(r);
+		em->pos_track_mode = buffer_read_int32(r);
 	}
 	if (version > 9) {
 		em->uk_int3 = buffer_read_int32(r);
 	}
 	if (version > 1) {
-		em->uk_int4 = buffer_read_int32(r);
-		em->uk_int5 = buffer_read_int32(r);
-		em->uk_int6 = buffer_read_int32(r);
-		em->uk_int7 = buffer_read_int32(r);
-		em->uk_int8 = buffer_read_int32(r);
-		em->uk_int9 = buffer_read_int32(r);
-		em->uk_int10 = buffer_read_int32(r);
-		em->uk_int11 = buffer_read_int32(r);
+		em->inherit_alpha = buffer_read_int32(r);
+		em->inherit_rotation = buffer_read_int32(r);
+		em->inherit_scale = buffer_read_int32(r);
+		em->inherit_add_color = buffer_read_int32(r);
+		em->inherit_mul_color = buffer_read_int32(r);
+		em->inherit_draw_filter = buffer_read_int32(r);
+		em->inherit_reverse_lr = buffer_read_int32(r);
+		em->inherit_reverse_tb = buffer_read_int32(r);
 	}
 	em->speed = buffer_read_float(r);
-	em->speed_rate = buffer_read_float(r);
+	em->acceleration = buffer_read_float(r);
 	em->move_length = buffer_read_float(r);
-	em->mobe_curve = buffer_read_float(r);
+	em->move_curve = buffer_read_float(r);
 	if (version > 1) {
-		em->uk_float1 = buffer_read_float(r);
+		em->move_rand = buffer_read_float(r);
 	}
 	em->is_fall = buffer_read_int32(r) != 0;
 	em->width = buffer_read_float(r);
 	em->air_resistance = buffer_read_float(r);
 	if (version > 1) {
-		em->uk_bool2 = buffer_read_int32(r) != 0;
+		em->align_to_direction = buffer_read_int32(r) != 0;
 	}
 	em->begin_x_angle = buffer_read_float(r);
 	if (version < 1) {
@@ -464,25 +463,25 @@ static void parse_emitter(struct buffer *r, struct flat_emitter *em, int version
 		em->begin_z_angle = buffer_read_float(r);
 		em->end_z_angle = buffer_read_float(r);
 	} else {
-		em->uk1_x_angle = buffer_read_float(r);
+		em->begin_x_angle_rand = buffer_read_float(r);
 		em->end_x_angle = buffer_read_float(r);
-		em->uk2_x_angle = buffer_read_float(r);
+		em->end_x_angle_rand = buffer_read_float(r);
 		em->begin_y_angle = buffer_read_float(r);
-		em->uk1_y_angle = buffer_read_float(r);
+		em->begin_y_angle_rand = buffer_read_float(r);
 		em->end_y_angle = buffer_read_float(r);
-		em->uk2_y_angle = buffer_read_float(r);
+		em->end_y_angle_rand = buffer_read_float(r);
 		em->begin_z_angle = buffer_read_float(r);
-		em->uk1_z_angle = buffer_read_float(r);
+		em->begin_z_angle_rand = buffer_read_float(r);
 		em->end_z_angle = buffer_read_float(r);
-		em->uk2_z_angle = buffer_read_float(r);
+		em->end_z_angle_rand = buffer_read_float(r);
 		if (version > 5) {
-			em->uk_bool3 = buffer_read_int32(r) != 0;
+			em->sync_rotation_rand = buffer_read_int32(r) != 0;
 		}
 	}
 	em->fade_in_frame = buffer_read_int32(r);
 	em->fade_out_frame = buffer_read_int32(r);
-	em->draw_filter_type = buffer_read_int32(r);
-	em->rand_base = buffer_read_int32(r);
+	em->draw_filter = buffer_read_int32(r);
+	em->rand_seed = buffer_read_int32(r);
 	em->end_pos_type = buffer_read_int32(r);
 	em->end_pos_x = buffer_read_float(r);
 	em->end_pos_y = buffer_read_float(r);
