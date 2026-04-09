@@ -184,6 +184,9 @@ static void _ex_read_value(struct ex_reader *r, struct ex_value *value, struct e
 			ex_read_fields(r, value->t);
 			ex_read_table(r, value->t, value->t->fields, value->t->nr_fields);
 		} else {
+			value->t->nr_fields = nr_fields;
+			value->t->fields = fields;
+			value->t->borrowed_fields = true;
 			ex_read_table(r, value->t, fields, nr_fields);
 		}
 		break;
@@ -782,7 +785,8 @@ static void ex_free_fields(struct ex_field *fields, uint32_t n)
 
 static void ex_free_table(struct ex_table *table)
 {
-	ex_free_fields(table->fields, table->nr_fields);
+	if (!table->borrowed_fields)
+		ex_free_fields(table->fields, table->nr_fields);
 	for (uint32_t i = 0; i < table->nr_rows; i++) {
 		ex_free_values(table->rows[i], table->nr_columns);
 	}
@@ -855,7 +859,8 @@ static struct ex_value *ex_tree_get_path(struct ex_tree *tree, const char *path)
 	}
 
 	for (unsigned i = 0; i < tree->nr_children; i++) {
-		if (!strncmp(tree->children[i].name->text, path, len)) {
+		if (tree->children[i].name->size == len &&
+		    !strncmp(tree->children[i].name->text, path, len)) {
 			if (next) {
 				return ex_tree_get_path(&tree->children[i], next+1);
 			}
@@ -872,7 +877,8 @@ static struct ex_value *_ex_get(struct ex *ex, const char *name, size_t name_len
 {
 	// TODO: use hash table
 	for (unsigned i = 0; i < ex->nr_blocks; i++) {
-		if (!strncmp(ex->blocks[i].name->text, name, name_len))
+		if (ex->blocks[i].name->size == name_len &&
+		    !strncmp(ex->blocks[i].name->text, name, name_len))
 			return &ex->blocks[i].val;
 	}
 	return NULL;
