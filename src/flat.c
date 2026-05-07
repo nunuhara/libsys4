@@ -426,9 +426,7 @@ static void parse_emitter(struct buffer *r, struct flat_emitter *em, int version
 	em->direction_z = buffer_read_float(r);
 	em->direction_angle = buffer_read_float(r);
 	em->parent_key_mode = buffer_read_int32(r);
-	if (version > 2) {
-		em->pos_track_mode = buffer_read_int32(r);
-	}
+	em->pos_track_mode = version > 2 ? buffer_read_int32(r) : 2;
 	if (version > 9) {
 		em->uk_int3 = buffer_read_int32(r);
 	}
