@@ -76,9 +76,8 @@ enum flat_timeline_type {
 };
 
 struct flat_key_data_graphic {
-	// After version 4 position is stored as float
-	union { int32_t i; float f; } pos_x;
-	union { int32_t i; float f; } pos_y;
+	float pos_x;
+	float pos_y;
 	float scale_x;
 	float scale_y;
 	float angle_x;

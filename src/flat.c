@@ -164,11 +164,11 @@ static void read_talt(struct flat *fl)
 static void parse_graphic_key(struct buffer *r, struct flat_key_data_graphic *out, const int version)
 {
 	if (version <= 4) {
-		out->pos_x.i = buffer_read_int32(r);
-		out->pos_y.i = buffer_read_int32(r);
+		out->pos_x = (float)buffer_read_int32(r);
+		out->pos_y = (float)buffer_read_int32(r);
 	} else {
-		out->pos_x.f = buffer_read_float(r);
-		out->pos_y.f = buffer_read_float(r);
+		out->pos_x = buffer_read_float(r);
+		out->pos_y = buffer_read_float(r);
 	}
 	out->scale_x = buffer_read_float(r);
 	out->scale_y = buffer_read_float(r);
