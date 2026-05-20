@@ -544,13 +544,10 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 	switch (lib->type) {
 		case FLAT_LIB_CG:
 			if (fl->hdr.version > 0) {
-				// No idea what this extra data is it reads a single int32 that is often 0 but sometimes 1
-				// Probably some kind of metadata
-				lib->cg.uk_int = buffer_read_int32(&r_payload);
-				lib->payload_off += 4;
+				lib->cg.generate_mipmap = buffer_read_int32(&r_payload) != 0;
 			}
 			lib->cg.data = buffer_data(&r_payload);
-			lib->cg.size = lib->size;
+			lib->cg.size = buffer_remaining(&r_payload);
 			break;
 		case FLAT_LIB_MEMORY:
 			WARNING("FLAT_LIB_MEMORY not implemented");

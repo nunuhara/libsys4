@@ -233,7 +233,7 @@ struct flat_library {
 	size_t size;
 	uint8_t *decoded; // only for ELNA-encrypted data.
 	union {
-		struct { const uint8_t *data; size_t size; int32_t uk_int; } cg;
+		struct { const uint8_t *data; size_t size; bool generate_mipmap; } cg;
 		struct { struct flat_timeline *timelines; size_t nr_timelines; } timeline;
 		struct flat_stop_motion stop_motion;
 		struct flat_emitter emitter;
