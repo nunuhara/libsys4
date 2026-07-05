@@ -722,3 +722,289 @@ bad_section:
 	return NULL;
 }
 
+// ---- writers ----------------------------------------------------------------
+
+static void buffer_pad_align(struct buffer *b, int p)
+{
+	while (b->index & (p - 1))
+		buffer_write_int8(b, 0);
+}
+
+static void write_flat_string(struct buffer *b, const struct string *s)
+{
+	uint32_t len = s ? (uint32_t)s->size : 0;
+	buffer_write_int32(b, len);
+	if (len)
+		buffer_write_bytes(b, (const uint8_t*)s->text, len);
+	buffer_pad_align(b, 4);
+}
+
+void flat_write_header(struct buffer *b, const struct flat_header *hdr)
+{
+	switch (hdr->type) {
+	case FLAT_HDR_V1_32:
+		buffer_write_int32(b, hdr->fps);
+		buffer_write_int32(b, hdr->game_view_width);
+		buffer_write_int32(b, hdr->game_view_height);
+		buffer_write_float(b, hdr->camera_length);
+		buffer_write_float(b, hdr->meter);
+		buffer_write_int32(b, hdr->width);
+		buffer_write_int32(b, hdr->height);
+		buffer_write_int32(b, hdr->version);
+		break;
+	case FLAT_HDR_V2_64: {
+		size_t start = b->index;
+		buffer_write_int32(b, hdr->version);
+		buffer_write_int32(b, hdr->fps);
+		buffer_write_int32(b, hdr->game_view_width);
+		buffer_write_int32(b, hdr->game_view_height);
+		buffer_write_float(b, hdr->camera_length);
+		buffer_write_float(b, hdr->meter);
+		buffer_write_int32(b, hdr->width);
+		buffer_write_int32(b, hdr->height);
+		buffer_write_int32(b, hdr->uk1);
+		while (b->index - start < 64)
+			buffer_write_int8(b, 0);
+		break;
+	}
+	default:
+		ERROR("Cannot write FLAT header of unknown type");
+	}
+}
+
+static void write_graphic_key(struct buffer *b, const struct flat_key_data_graphic *k, int version)
+{
+	if (version <= 4) {
+		buffer_write_int32(b, (int32_t)k->pos_x);
+		buffer_write_int32(b, (int32_t)k->pos_y);
+	} else {
+		buffer_write_float(b, k->pos_x);
+		buffer_write_float(b, k->pos_y);
+	}
+	buffer_write_float(b, k->scale_x);
+	buffer_write_float(b, k->scale_y);
+	buffer_write_float(b, k->angle_x);
+	buffer_write_float(b, k->angle_y);
+	buffer_write_float(b, k->angle_z);
+	buffer_write_int32(b, k->add_r);
+	buffer_write_int32(b, k->add_g);
+	buffer_write_int32(b, k->add_b);
+	buffer_write_int32(b, k->mul_r);
+	buffer_write_int32(b, k->mul_g);
+	buffer_write_int32(b, k->mul_b);
+	buffer_write_int32(b, k->alpha);
+	buffer_write_int32(b, k->area_x);
+	buffer_write_int32(b, k->area_y);
+	buffer_write_int32(b, k->area_width);
+	buffer_write_int32(b, k->area_height);
+	buffer_write_int32(b, k->draw_filter);
+	if (version > 8)
+		buffer_write_int32(b, k->uk1);
+	buffer_write_int32(b, k->origin_x);
+	buffer_write_int32(b, k->origin_y);
+	if (version > 7)
+		buffer_write_int32(b, k->uk2);
+	buffer_write_int32(b, k->reverse_tb ? 1 : 0);
+	buffer_write_int32(b, k->reverse_lr ? 1 : 0);
+}
+
+static void write_graphic_tl(struct buffer *b, const struct flat_timeline *tl, int version)
+{
+	if (version < 15) {
+		for (size_t i = 0; i < tl->graphic.count; i++)
+			write_graphic_key(b, &tl->graphic.keys[i], version);
+		return;
+	}
+	for (int32_t f = 0; f < tl->frame_count; f++) {
+		const struct flat_key_frame_graphic *fr = &tl->graphic.frames[f];
+		buffer_write_int32(b, fr->count);
+		for (uint32_t i = 0; i < fr->count; i++)
+			write_graphic_key(b, &fr->keys[i], version);
+	}
+}
+
+static void write_script_tl(struct buffer *b, const struct flat_timeline *tl)
+{
+	buffer_write_int32(b, tl->script.count);
+	for (size_t i = 0; i < tl->script.count; i++) {
+		const struct flat_script_key *k = &tl->script.keys[i];
+		buffer_write_int32(b, k->frame_index);
+		if (k->has_jump) {
+			buffer_write_int32(b, 1);
+			buffer_write_int32(b, k->jump_frame);
+		}
+		if (k->is_stop) {
+			buffer_write_int32(b, 2);
+		}
+		if (k->text) {
+			buffer_write_int32(b, 3);
+			write_flat_string(b, k->text);
+		}
+		buffer_write_int32(b, 0);
+	}
+}
+
+static void write_timeline(struct buffer *b, const struct flat_timeline *tl, int version)
+{
+	write_flat_string(b, tl->name);
+	write_flat_string(b, tl->library_name);
+	buffer_write_int32(b, tl->type);
+	buffer_write_int32(b, tl->begin_frame);
+	buffer_write_int32(b, tl->frame_count);
+	switch (tl->type) {
+	case FLAT_TIMELINE_GRAPHIC:
+		write_graphic_tl(b, tl, version);
+		break;
+	case FLAT_TIMELINE_SCRIPT:
+		write_script_tl(b, tl);
+		break;
+	case FLAT_TIMELINE_SOUND:
+		ERROR("Writing FLAT_TIMELINE_SOUND is not implemented");
+	default:
+		ERROR("Unknown timeline type %d", tl->type);
+	}
+}
+
+void flat_write_timelines(struct buffer *b, const struct flat_timeline *tls, size_t n, int version)
+{
+	struct buffer plain;
+	buffer_init(&plain, NULL, 0);
+	buffer_write_int32(&plain, (uint32_t)n);
+	for (size_t i = 0; i < n; i++)
+		write_timeline(&plain, &tls[i], version);
+
+	if (version >= 4) {
+		uLongf bound = compressBound(plain.index);
+		uint8_t *cbuf = xmalloc(bound);
+		if (compress2(cbuf, &bound, plain.buf, plain.index, Z_BEST_COMPRESSION) != Z_OK)
+			ERROR("compress2() failed for FLAT timelines");
+		buffer_write_int32(b, (uint32_t)plain.index);
+		buffer_write_bytes(b, cbuf, bound);
+		// Zero-pad to a 4-byte boundary. This matches AliceSoft's original layout.
+		buffer_pad_align(b, 4);
+		free(cbuf);
+	} else {
+		buffer_write_bytes(b, plain.buf, plain.index);
+	}
+	free(plain.buf);
+}
+
+static void write_stop_motion(struct buffer *b, const struct flat_stop_motion *sm)
+{
+	write_flat_string(b, sm->library_name);
+	buffer_write_int32(b, sm->span);
+	buffer_write_int32(b, sm->loop_type);
+}
+
+static void write_emitter(struct buffer *b, const struct flat_emitter *em, int version)
+{
+	write_flat_string(b, em->library_name);
+	if (version > 0)
+		buffer_write_int32(b, em->particle_align);
+	buffer_write_int32(b, em->create_pos_type);
+	buffer_write_float(b, em->create_pos_length);
+	buffer_write_float(b, em->create_pos_length2);
+	buffer_write_int32(b, em->create_count);
+	buffer_write_int32(b, em->particle_lifetime);
+	buffer_write_float(b, em->begin_scale);
+	if (version < 1) {
+		buffer_write_float(b, em->end_scale);
+		buffer_write_float(b, em->begin_x_scale);
+		buffer_write_float(b, em->end_x_scale);
+		buffer_write_float(b, em->begin_y_scale);
+		buffer_write_float(b, em->end_y_scale);
+	} else {
+		buffer_write_float(b, em->begin_scale_rand);
+		buffer_write_float(b, em->end_scale);
+		buffer_write_float(b, em->end_scale_rand);
+		buffer_write_float(b, em->begin_x_scale);
+		buffer_write_float(b, em->begin_x_scale_rand);
+		buffer_write_float(b, em->end_x_scale);
+		buffer_write_float(b, em->end_x_scale_rand);
+		buffer_write_float(b, em->begin_y_scale);
+		buffer_write_float(b, em->begin_y_scale_rand);
+		buffer_write_float(b, em->end_y_scale);
+		buffer_write_float(b, em->end_y_scale_rand);
+		if (version > 5)
+			buffer_write_int32(b, em->sync_scale_rand ? 1 : 0);
+	}
+	buffer_write_int32(b, em->direction_type);
+	buffer_write_float(b, em->direction_x);
+	buffer_write_float(b, em->direction_y);
+	buffer_write_float(b, em->direction_z);
+	buffer_write_float(b, em->direction_angle);
+	buffer_write_int32(b, em->parent_key_mode);
+	if (version > 2)
+		buffer_write_int32(b, em->pos_track_mode);
+	if (version > 9)
+		buffer_write_int32(b, em->uk_int3);
+	if (version > 1) {
+		buffer_write_int32(b, em->inherit_alpha);
+		buffer_write_int32(b, em->inherit_rotation);
+		buffer_write_int32(b, em->inherit_scale);
+		buffer_write_int32(b, em->inherit_add_color);
+		buffer_write_int32(b, em->inherit_mul_color);
+		buffer_write_int32(b, em->inherit_draw_filter);
+		buffer_write_int32(b, em->inherit_reverse_lr);
+		buffer_write_int32(b, em->inherit_reverse_tb);
+	}
+	buffer_write_float(b, em->speed);
+	buffer_write_float(b, em->acceleration);
+	buffer_write_float(b, em->move_length);
+	buffer_write_float(b, em->move_curve);
+	if (version > 1)
+		buffer_write_float(b, em->move_rand);
+	buffer_write_int32(b, em->is_fall ? 1 : 0);
+	buffer_write_float(b, em->width);
+	buffer_write_float(b, em->air_resistance);
+	if (version > 1)
+		buffer_write_int32(b, em->align_to_direction ? 1 : 0);
+	buffer_write_float(b, em->begin_x_angle);
+	if (version < 1) {
+		buffer_write_float(b, em->end_x_angle);
+		buffer_write_float(b, em->begin_y_angle);
+		buffer_write_float(b, em->end_y_angle);
+		buffer_write_float(b, em->begin_z_angle);
+		buffer_write_float(b, em->end_z_angle);
+	} else {
+		buffer_write_float(b, em->begin_x_angle_rand);
+		buffer_write_float(b, em->end_x_angle);
+		buffer_write_float(b, em->end_x_angle_rand);
+		buffer_write_float(b, em->begin_y_angle);
+		buffer_write_float(b, em->begin_y_angle_rand);
+		buffer_write_float(b, em->end_y_angle);
+		buffer_write_float(b, em->end_y_angle_rand);
+		buffer_write_float(b, em->begin_z_angle);
+		buffer_write_float(b, em->begin_z_angle_rand);
+		buffer_write_float(b, em->end_z_angle);
+		buffer_write_float(b, em->end_z_angle_rand);
+		if (version > 5)
+			buffer_write_int32(b, em->sync_rotation_rand ? 1 : 0);
+	}
+	buffer_write_int32(b, em->fade_in_frame);
+	buffer_write_int32(b, em->fade_out_frame);
+	buffer_write_int32(b, em->draw_filter);
+	buffer_write_int32(b, em->rand_seed);
+	buffer_write_int32(b, em->end_pos_type);
+	buffer_write_float(b, em->end_pos_x);
+	buffer_write_float(b, em->end_pos_y);
+	buffer_write_float(b, em->end_pos_z);
+	write_flat_string(b, em->end_cg_name);
+}
+
+void flat_write_library_payload(struct buffer *b, const struct flat_library *lib, int version)
+{
+	switch (lib->type) {
+	case FLAT_LIB_TIMELINE:
+		flat_write_timelines(b, lib->timeline.timelines, lib->timeline.nr_timelines, version);
+		break;
+	case FLAT_LIB_STOP_MOTION:
+		write_stop_motion(b, &lib->stop_motion);
+		break;
+	case FLAT_LIB_EMITTER:
+		write_emitter(b, &lib->emitter, version);
+		break;
+	default:
+		ERROR("flat_write_library_payload: unsupported library type %d", lib->type);
+	}
+}
