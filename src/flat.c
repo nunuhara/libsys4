@@ -72,7 +72,7 @@ static void free_timeline(struct flat_timeline *tl)
 	}
 }
 
-static void free_library(struct flat_library *lib)
+void flat_free_library(struct flat_library *lib)
 {
 
 	switch (lib->type) {
@@ -111,7 +111,7 @@ void flat_free(struct flat *fl)
 	}
 	free(fl->timelines);
 	for (size_t i = 0; i < fl->nr_libraries; i++) {
-		free_library(&fl->libraries[i]);
+		flat_free_library(&fl->libraries[i]);
 	}
 	free(fl->libraries);
 	for (unsigned i = 0; i < fl->nr_talt_entries; i++) {
