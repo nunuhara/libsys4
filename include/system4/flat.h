@@ -283,6 +283,7 @@ struct flat {
 
 struct flat *flat_open(uint8_t *data, size_t size, int *error);
 void flat_free(struct flat *fl);
+void flat_free_library(struct flat_library *lib);
 
 struct buffer;
 void flat_write_header(struct buffer *b, const struct flat_header *hdr);
