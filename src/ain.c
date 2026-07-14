@@ -1192,14 +1192,7 @@ static bool read_tag(struct ain_reader *r, struct ain *ain)
 	if (TAG_EQ("VERS")) {
 		start_section(r, &ain->VERS);
 		ain->version = read_int32(r);
-		if (AIN_VERSION_GTE(ain, 11, 0)) {
-			instructions[CALLHLL].nr_args = 3;
-			instructions[NEW].nr_args = 2;
-			instructions[S_MOD].nr_args = 1;
-			instructions[OBJSWAP].nr_args = 1;
-			instructions[DG_STR_TO_METHOD].nr_args = 1;
-			instructions[CALLMETHOD].args[0] = T_INT;
-		}
+		initialize_instructions(ain->version);
 		// XXX: default to 14.1 (14.0 games handled individually)
 		if (ain->version == 14)
 			ain->minor_version = 1;
@@ -1482,6 +1475,7 @@ struct ain *ain_new(int major_version, int minor_version)
 
 	ain->version = major_version;
 	ain->minor_version = minor_version;
+	initialize_instructions(ain->version);
 	ain->main = -1;
 	ain->msgf = -1;
 	ain->ojmp = -1;

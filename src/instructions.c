@@ -390,7 +390,7 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( DG_ADD,             0, (),              (T_PAGE, T_PAGE, T_FUNC), () ),
         JMP  ( DG_CALL,            2, (T_DLG, T_ADDR), (), () ),
         OP   ( DG_NUMOF,           0, (),              (T_PAGE), (T_INT) ),
-        TODO ( DG_EXIST,           0, (),              (), () ),
+        OP   ( DG_EXIST,           0, (),              (T_PAGE, T_PAGE, T_FUNC), (T_INT) ),
         TODO ( DG_ERASE,           0, (),              (), () ),
         OP   ( DG_CLEAR,           0, (),              (T_PAGE), () ),
         OP   ( DG_COPY,            0, (),              (T_PAGE), (T_PAGE) ),
@@ -400,8 +400,8 @@ struct instruction instructions[NR_OPCODES] = {
         OP   ( DG_NEW_FROM_METHOD, 0, (),              (T_PAGE, T_FUNC), (T_PAGE) ),
         OP   ( DG_MINUSA,          0, (),              (T_PAGE, T_PAGE), (T_PAGE) ),
         OP   ( DG_CALLBEGIN,       1, (T_DLG),         (T_PAGE), () /* varies? */),
-        TODO ( DG_NEW,             0, (),              (), () ),
-        TODO ( DG_STR_TO_METHOD,   0, (T_DLG),         (), () ), // XXX: changed in ain version > 8
+        OP   ( DG_NEW,             0, (),              (), (T_PAGE) ),
+        OP   ( DG_STR_TO_METHOD,   0, (T_DLG),         (T_STRING, T_DLG), (T_FUNC) ), // XXX: changed in ain version > 8
 
 	TODO ( OP_0X102, 0, (),             (), () ),
 	TODO ( X_GETENV, 0, (),             (), () ),
@@ -420,21 +420,29 @@ struct instruction instructions[NR_OPCODES] = {
 	TODO ( X_TO_STR, 1, (T_INT),        (), () ),
 };
 
+static void set_nr_args(enum opcode opcode, int nr_args)
+{
+	instructions[opcode].nr_args = nr_args;
+	instructions[opcode].ip_inc = 2 + nr_args * 4;
+}
+
 void initialize_instructions(int version)
 {
 	if (version >= 11) {
-		instructions[NEW].nr_args = 2;
-		instructions[CALLHLL].nr_args = 3;
-		instructions[S_MOD].nr_args = 1;
-		instructions[OBJSWAP].nr_args = 1;
-		instructions[DG_STR_TO_METHOD].nr_args = 1;
+		set_nr_args(NEW, 2);
+		set_nr_args(CALLHLL, 3);
+		set_nr_args(S_MOD, 1);
+		set_nr_args(OBJSWAP, 1);
+		set_nr_args(DG_STR_TO_METHOD, 1);
+		instructions[DG_STR_TO_METHOD].nr_stack_args = 1;
 		instructions[CALLMETHOD].args[0] = T_INT;
 	} else {
-		instructions[NEW].nr_args = 0;
-		instructions[CALLHLL].nr_args = 2;
-		instructions[S_MOD].nr_args = 0;
-		instructions[OBJSWAP].nr_args = 0;
-		instructions[DG_STR_TO_METHOD].nr_args = 0;
+		set_nr_args(NEW, 0);
+		set_nr_args(CALLHLL, 2);
+		set_nr_args(S_MOD, 0);
+		set_nr_args(OBJSWAP, 0);
+		set_nr_args(DG_STR_TO_METHOD, 0);
+		instructions[DG_STR_TO_METHOD].nr_stack_args = 2;
 		instructions[CALLMETHOD].args[0] = T_FUNC;
 	}
 }
