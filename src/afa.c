@@ -315,6 +315,27 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 		}
 	}
 
+	// XXX: Some repacked archives (e.g. fan-patched Daiteikoku) store the
+	//      same bogus ID on every file, which breaks lookup by number.
+	//      Fall back to sequential indices if IDs are not unique.
+	if (ar->has_number) {
+		struct hash_table *ht = ht_create(ar->nr_files * 3 / 2);
+		bool unique = true;
+		for (uint32_t i = 0; unique && i < ar->nr_files; i++) {
+			struct ht_slot *slot = ht_put_int(ht, ar->files[i].no, NULL);
+			if (slot->value)
+				unique = false;
+			else
+				slot->value = &ar->files[i];
+		}
+		ht_free_int(ht);
+		if (!unique) {
+			WARNING("AFA file IDs are not unique; falling back to sequential indices");
+			for (uint32_t i = 0; i < ar->nr_files; i++)
+				ar->files[i].no = i;
+		}
+	}
+
 	free(buf);
 	free(table);
 	return true;
