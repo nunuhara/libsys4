@@ -17,12 +17,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <zlib.h>
 
 #include "system4.h"
 #include "system4/acx.h"
 #include "system4/file.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 #include "little_endian.h"
 
 // FIXME: guard against invalid .acx file (use `struct buffer` to prevent overflow)
@@ -78,11 +78,11 @@ struct acx *acx_load_conv(const char *path, int *error, struct string*(*conv)(co
 	}
 
 	// decompress
-	int compressed_size = LittleEndian_getDW(buf, 8);
-	unsigned long size = LittleEndian_getDW(buf, 12);
+	uint32_t compressed_size = LittleEndian_getDW(buf, 8);
+	uint32_t size = LittleEndian_getDW(buf, 12);
 	uint8_t *data_raw = xmalloc(size);
 
-	if (Z_OK != uncompress(data_raw, &size, buf+16, compressed_size)) {
+	if (!zlib_decompress_exact(data_raw, size, buf+16, compressed_size)) {
 		WARNING("ACXLoader.Load: uncompress failed");
 		free(buf);
 		free(data_raw);
@@ -159,5 +159,4 @@ struct string *acx_get_string(struct acx *acx, int line, int col)
 	assert(col < acx->nr_columns);
 	return acx->lines[line*acx->nr_columns + col].s;
 }
-
 

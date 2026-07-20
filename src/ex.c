@@ -20,13 +20,13 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
-#include <zlib.h>
 #include "little_endian.h"
 #include "system4.h"
 #include "system4/buffer.h"
 #include "system4/ex.h"
 #include "system4/file.h"
 #include "system4/string.h"
+#include "system4/zlib.h"
 
 #define _EX_ERROR(buf, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(buf)->index, ##__VA_ARGS__)
 #define EX_ERROR(reader, fmt, ...) ERROR("At 0x%08x: " fmt, (uint32_t)(reader)->buf.index, ##__VA_ARGS__)
@@ -113,7 +113,7 @@ static uint8_t *ex_decode(uint8_t *data, size_t *len, uint32_t *nr_blocks)
 {
 	struct buffer r;
 	uint32_t compressed_size;
-	unsigned long uncompressed_size;
+	uint32_t uncompressed_size;
 
 	if (!ex_initialized)
 		ex_init();
@@ -146,17 +146,11 @@ static uint8_t *ex_decode(uint8_t *data, size_t *len, uint32_t *nr_blocks)
 		data[r.index+i] = ex_decode_table[data[r.index+i]];
 	}
 
-	uint8_t *out = xmalloc(uncompressed_size);
-	int rv = uncompress(out, &uncompressed_size, (uint8_t*)buffer_strdata(&r), compressed_size);
-	switch (rv) {
-	case Z_BUF_ERROR:  ERROR("Uncompress failed: Z_BUF_ERROR");
-	case Z_MEM_ERROR:  ERROR("Uncompress failed: Z_MEM_ERROR");
-	case Z_DATA_ERROR: ERROR("Uncompress failed: Z_DATA_ERROR");
-	case Z_OK:         break;
-	default:           ERROR("Uncompress failed: %d", rv);
-	}
-
 	// decompress
+	uint8_t *out = xmalloc(uncompressed_size);
+	if (!zlib_decompress_exact(out, uncompressed_size, (uint8_t*)buffer_strdata(&r), compressed_size))
+		ERROR("ex: zlib_decompress failed");
+
 	*len = uncompressed_size;
 	return out;
 }
@@ -1044,4 +1038,3 @@ int ex_col_from_name(struct ex_table *t, const char *name)
 	}
 	return -1;
 }
-

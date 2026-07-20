@@ -26,7 +26,7 @@
 #include "system4/qnt.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
-#include <zlib.h>
+#include "system4/zlib.h"
 
 bool dcf_checkfmt(const uint8_t *data)
 {
@@ -108,14 +108,14 @@ static uint8_t *dcf_read_dfdl(struct buffer *in, size_t *size_out)
 	}
 	size_t next_pos = in->index + dfdl_size;
 
-	unsigned long uncompressed_size = buffer_read_int32(in);
+	size_t uncompressed_size = buffer_read_int32(in);
 	if (uncompressed_size > 40000) {
 		WARNING("Invalid size for uncompressed chunk map");
 		return NULL;
 	}
 
 	uint8_t *chunk_map = xmalloc(uncompressed_size);
-	if (uncompress(chunk_map, &uncompressed_size, in->buf+in->index, dfdl_size - 4) != Z_OK) {
+	if (!zlib_decompress_exact(chunk_map, uncompressed_size, in->buf+in->index, dfdl_size - 4)) {
 		WARNING("Failed to uncompress chunk map");
 		free(chunk_map);
 		return NULL;
@@ -364,12 +364,12 @@ uint8_t *dcf_encode(struct cg *base, struct cg *diff, const char *base_cg_name, 
 
 	// compress _chunk map
 	int cm_fullsize = 4 + chunks_w * chunks_h;
-	unsigned long cm_compsize = compressBound(cm_fullsize);
+	size_t cm_compsize = zlib_compress_bound(cm_fullsize);
 	uint8_t *chunkmap_compressed = xmalloc(cm_compsize);
-	int r = compress2(chunkmap_compressed, &cm_compsize, _chunk_map, cm_fullsize,
-			Z_BEST_COMPRESSION);
-	if (r != Z_OK) {
-		WARNING("compress() failed with error code %d", r);
+	cm_compsize = zlib_compress(chunkmap_compressed, cm_compsize,
+			_chunk_map, cm_fullsize, ZLIB_BEST_COMPRESSION);
+	if (!cm_compsize) {
+		WARNING("compress() failed");
 		free(_chunk_map);
 		free(chunkmap_compressed);
 		return NULL;
