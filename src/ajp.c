@@ -79,9 +79,11 @@ static void ajp_init_metrics(struct ajp_header *ajp, struct cg_metrics *dst)
 
 static uint8_t *read_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header *ajp)
 {
-	if (ajp->mask_size && pms8_checkfmt(mask_data)) {
+	if (ajp->mask_size == 0)
+		return NULL;
+	if (pms8_checkfmt(mask_data)) {
 		return pms_extract_mask(mask_data, ajp->mask_size);
-	} else if (ajp->mask_size && webp_checkfmt(mask_data)) {
+	} else if (webp_checkfmt(mask_data)) {
 		int w, h;
 		uint8_t *tmp = WebPDecodeRGBA(mask_data, ajp->mask_size, &w, &h);
 		if (w != ajp->width || h != ajp->height) {
@@ -106,10 +108,10 @@ static uint8_t *read_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header
 			return NULL;
 		}
 		return mask;
-	}
-	if (ajp->mask_size)
+	} else {
 		WARNING("Unsupported AJP mask format: %02x %02x %02x %02x",
 				mask_data[0], mask_data[1], mask_data[2], mask_data[3]);
+	}
 
 	return NULL;
 }
