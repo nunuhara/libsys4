@@ -161,10 +161,20 @@ static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 {
 	int i, x, y, w, h;
 	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1);
-	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
+	// Обнуляем: у части QNT альфа распаковывается в чуть меньший размер, чем
+	// чётно-паддинговый ucbuf (паддинг-столбец/строка опущены) — пропущенные
+	// байты должны быть 0, а не мусором.
+	uint8_t *raw = calloc(ucbuf, 1);
 
-	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->alpha_size)) {
-		WARNING("uncompress failed\n");
+	// Терпимая распаковка: принимаем любой успешный декод (actual <= ucbuf).
+	// Строгая проверка "ровно ucbuf" (zlib_decompress_exact, добавлена вместе
+	// с libdeflate-бэкендом в libsys4 625b0b8) отвергала такие CG и оставляла
+	// альфа-канал мусором → визуальный шум. Только настоящая ошибка распаковки
+	// (нужно БОЛЬШЕ ucbuf либо битый поток) → трактуем CG как непрозрачный.
+	size_t actual;
+	if (!zlib_decompress(raw, ucbuf, b, qnt->alpha_size, &actual)) {
+		WARNING("QNT alpha decompress failed; treating as opaque\n");
+		memset(pic, 0xff, (size_t)qnt->width * qnt->height);
 		free(raw);
 		return;
 	}
