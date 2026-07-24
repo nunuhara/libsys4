@@ -162,8 +162,12 @@ static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 	int i, x, y, w, h;
 	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1);
 	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
+	size_t actual_size;
 
-	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->alpha_size)) {
+	// ALDExplorer pads alpha data to even width, but not even height.
+	size_t required_size = ((qnt->width+1) & ~1) * qnt->height;
+	if (!zlib_decompress(raw, ucbuf, b, qnt->alpha_size, &actual_size)
+			|| actual_size < required_size) {
 		WARNING("uncompress failed\n");
 		free(raw);
 		return;
