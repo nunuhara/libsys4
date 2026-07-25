@@ -162,8 +162,12 @@ static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 	int i, x, y, w, h;
 	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1);
 	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
+	size_t actual_size;
 
-	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->alpha_size)) {
+	// ALDExplorer pads alpha data to even width, but not even height.
+	size_t required_size = ((qnt->width+1) & ~1) * qnt->height;
+	if (!zlib_decompress(raw, ucbuf, b, qnt->alpha_size, &actual_size)
+			|| actual_size < required_size) {
 		WARNING("uncompress failed\n");
 		free(raw);
 		return;
@@ -244,7 +248,7 @@ void qnt_extract(const uint8_t *data, struct cg *cg)
 	qnt_extract_header(data, &qnt);
 	qnt_init_metrics(&qnt, &cg->metrics);
 
-	uint8_t *pixels = xcalloc(3, (qnt.width+10) * (qnt.height+10));
+	uint8_t *pixels = xcalloc(3, qnt.width * qnt.height);
 	if (qnt.pixel_size) {
 		extract_pixel(&qnt, pixels, data + qnt.hdr_size);
 	}
@@ -252,15 +256,15 @@ void qnt_extract(const uint8_t *data, struct cg *cg)
 	cg->type = ALCG_QNT;
 
 	// combine color/alpha data
-	uint8_t *alpha = xmalloc((qnt.width+10) * (qnt.height+10));
-	uint8_t *tmp = xmalloc((qnt.width+10) * (qnt.height+10) * 4);
+	uint8_t *alpha = xmalloc(qnt.width * qnt.height);
+	uint8_t *tmp = xmalloc(qnt.width * qnt.height * 4);
 	if (qnt.alpha_size) {
 		extract_alpha(&qnt, alpha, data + qnt.hdr_size + qnt.pixel_size);
 	} else {
 		// FIXME: Some CGs don't display correctly unless we add an alpha channel here.
 		//        Not sure why. It seems to affect some but not all alpha-less CGs.
 		//        E.g. CG#90 (and similar) from the Rance 2 digest version.
-		memset(alpha, 0xFF, (qnt.width+10)*(qnt.height+10));
+		memset(alpha, 0xFF, qnt.width*qnt.height);
 	}
 	for (int src_i = 0, dst_i = 0, p = 0; p < qnt.width * qnt.height; p++) {
 		tmp[dst_i++] = pixels[src_i++];
