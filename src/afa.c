@@ -253,11 +253,7 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	entry->name->size = name_len; // fix length
 
 	if (ar->has_number) {
-		// XXX: Oyako Rankan is AFAv1 but all IDs are 0, which breaks load_file.
-		//      We revert to using sequential indices in this case
-		int32_t no = buffer_read_int32(in) - 1;
-		if (no >= 0)
-			entry->no = no;
+		entry->no = buffer_read_int32(in) - 1;
 	}
 	entry->unknown0 = buffer_read_int32(in);
 	entry->unknown1 = buffer_read_int32(in);
@@ -311,6 +307,26 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 		if (!afa_read_entry(&r, ar, &ar->files[i], error, conv)) {
 			free(ar->files);
 			goto exit_err;
+		}
+	}
+
+	// XXX: Some repacked archives store the same bogus ID on every file, which
+	//      breaks lookup by number: Oyako Rankan (AFAv1, all IDs 0) and the
+	//      fan-patched Daiteikoku (all IDs 765059456) are known cases. When
+	//      *every* ID is identical the number field is clearly meaningless, so
+	//      fall back to sequential indices. Restricting to the all-identical
+	//      case (rather than any duplicate) avoids disturbing the ID mapping of
+	//      archives that are only partially malformed but still usable.
+	if (ar->has_number && ar->nr_files > 1) {
+		bool all_same = true;
+		for (uint32_t i = 1; all_same && i < ar->nr_files; i++) {
+			if (ar->files[i].no != ar->files[0].no)
+				all_same = false;
+		}
+		if (all_same) {
+			WARNING("AFA file IDs are all identical; falling back to sequential indices");
+			for (uint32_t i = 0; i < ar->nr_files; i++)
+				ar->files[i].no = i;
 		}
 	}
 
