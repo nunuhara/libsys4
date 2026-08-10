@@ -138,6 +138,8 @@ char *utf2sjis(const char *_src, size_t len) {
 		if (u > 0xff60 && u <= 0xff9f) {
 			*dstp++ = u - 0xff60 + 0xa0;
 		} else {
+			if (u == 0x301c) // WAVE DASH -> FULLWIDTH TILDE WORKAROUND
+				u = 0xff5e;
 			int c = unicode_to_sjis(u);
 			if (c) {
 				*dstp++ = c >> 8;
