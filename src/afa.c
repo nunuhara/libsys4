@@ -253,7 +253,15 @@ static bool afa_read_entry(struct buffer *in, struct afa_archive *ar, struct afa
 	entry->name->size = name_len; // fix length
 
 	if (ar->has_number) {
-		entry->no = buffer_read_int32(in) - 1;
+		// XXX: Oyako Rankan is AFAv1 but all IDs are 0, which breaks load_file.
+		//      English version of RanceQuestAFF.afa is similar (one ID is 3, rest 0).
+		//      We revert to using negative sequential indices in these cases
+		int32_t no = buffer_read_int32(in) - 1;
+		if (no >= 0) {
+			entry->no = no;
+		} else {
+			entry->no = -entry->no;
+		}
 	}
 	entry->unknown0 = buffer_read_int32(in);
 	entry->unknown1 = buffer_read_int32(in);
@@ -310,13 +318,8 @@ static bool afa_read_file_table(FILE *f, struct afa_archive *ar, int *error, str
 		}
 	}
 
-	// XXX: Some repacked archives store the same bogus ID on every file, which
-	//      breaks lookup by number: Oyako Rankan (AFAv1, all IDs 0) and the
-	//      fan-patched Daiteikoku (all IDs 765059456) are known cases. When
-	//      *every* ID is identical the number field is clearly meaningless, so
-	//      fall back to sequential indices. Restricting to the all-identical
-	//      case (rather than any duplicate) avoids disturbing the ID mapping of
-	//      archives that are only partially malformed but still usable.
+	// XXX: Fix for fan-patched Daiteikoku, which stores ID 765059456 on all files
+	//      (breaks load_file)
 	if (ar->has_number && ar->nr_files > 1) {
 		bool all_same = true;
 		for (uint32_t i = 1; all_same && i < ar->nr_files; i++) {
