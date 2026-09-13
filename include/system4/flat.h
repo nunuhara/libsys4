@@ -98,7 +98,7 @@ struct flat_key_data_graphic {
 	int32_t uk1; // only version > 8
 	int32_t origin_x;
 	int32_t origin_y;
-	int32_t uk2; // Only version > 7
+	int32_t align; // Only version > 7
 	bool reverse_tb; // Top/bottom
 	bool reverse_lr; // Left/right
 };

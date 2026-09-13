@@ -190,7 +190,7 @@ static void parse_graphic_key(struct buffer *r, struct flat_key_data_graphic *ou
 	out->uk1 = (version > 8) ? buffer_read_int32(r) : 0;
 	out->origin_x = buffer_read_int32(r);
 	out->origin_y = buffer_read_int32(r);
-	out->uk2 = (version > 7) ? buffer_read_int32(r) : 0;
+	out->align = (version > 7) ? buffer_read_int32(r) : 1;
 	out->reverse_tb = buffer_read_int32(r) != 0;
 	out->reverse_lr = buffer_read_int32(r) != 0;
 }
@@ -802,7 +802,7 @@ static void write_graphic_key(struct buffer *b, const struct flat_key_data_graph
 	buffer_write_int32(b, k->origin_x);
 	buffer_write_int32(b, k->origin_y);
 	if (version > 7)
-		buffer_write_int32(b, k->uk2);
+		buffer_write_int32(b, k->align);
 	buffer_write_int32(b, k->reverse_tb ? 1 : 0);
 	buffer_write_int32(b, k->reverse_lr ? 1 : 0);
 }

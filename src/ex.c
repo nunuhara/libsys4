@@ -855,7 +855,7 @@ static struct ex_value *ex_tree_get_path(struct ex_tree *tree, const char *path)
 	for (unsigned i = 0; i < tree->nr_children; i++) {
 		if (tree->children[i].name->size == len &&
 		    !strncmp(tree->children[i].name->text, path, len)) {
-			if (next) {
+			if (next && next[1]) {
 				return ex_tree_get_path(&tree->children[i], next+1);
 			}
 			if (tree->children[i].is_leaf)
@@ -885,7 +885,7 @@ struct ex_value *ex_get(struct ex *ex, const char *name)
 	struct ex_value *v = _ex_get(ex, name, len);
 	if (!v)
 		return NULL;
-	if (!next)
+	if (!next || !next[1])
 		return v;
 	if (v->type != EX_TREE)
 		return NULL;
