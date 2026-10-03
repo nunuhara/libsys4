@@ -119,16 +119,17 @@ static void number_zen2han(char *buf)
 		uint8_t b1 = buf[src];
 		if (SJIS_2BYTE(b1)) {
 			uint8_t b2 = buf[src+1];
-			if (b1 == 0x82 && b2 >= 0x4f && b2 <= 0x58) {
-				buf[dst++] = '0' + (b2 - 0x4f);
+			int digit_base = use_gbk ? 0xb0 : 0x4f;
+			if (b1 == (use_gbk ? 0xa3 : 0x82) && b2 >= digit_base && b2 < digit_base + 10) {
+				buf[dst++] = '0' + (b2 - digit_base);
 				src += 2;
-			} else if (b1 == 0x81 && b2 == 0x7c) {
+			} else if (b1 == (use_gbk ? 0xa3 : 0x81) && b2 == (use_gbk ? 0xad : 0x7c)) {
 				buf[dst++] = '-';
 				src += 2;
-			} else if (b1 == 0x81 && b2 == 0x44) {
+			} else if (b1 == (use_gbk ? 0xa3 : 0x81) && b2 == (use_gbk ? 0xae : 0x44)) {
 				buf[dst++] = '.';
 				src += 2;
-			} else if (b1 == 0x81 && b2 == 0x40) {
+			} else if (b1 == (use_gbk ? 0xa1 : 0x81) && b2 == (use_gbk ? 0xa1 : 0x40)) {
 				buf[dst++] = ' ';
 				src += 2;
 			} else {
@@ -344,20 +345,20 @@ static int number_han2zen(char *buf, size_t size)
 		switch (*p) {
 		case '0': case '1': case '2': case '3': case '4':
 		case '5': case '6': case '7': case '8': case '9':
-			tmp[i++] = 0x82;
-			tmp[i++] = 0x4f + (*p - '0');
+			tmp[i++] = use_gbk ? 0xa3 : 0x82;
+			tmp[i++] = (use_gbk ? 0xb0 : 0x4f) + (*p - '0');
 			break;
 		case '-':
-			tmp[i++] = 0x81;
-			tmp[i++] = 0x7c;
+			tmp[i++] = use_gbk ? 0xa3 : 0x81;
+			tmp[i++] = use_gbk ? 0xad : 0x7c;
 			break;
 		case '.':
-			tmp[i++] = 0x81;
-			tmp[i++] = 0x44;
+			tmp[i++] = use_gbk ? 0xa3 : 0x81;
+			tmp[i++] = use_gbk ? 0xae : 0x44;
 			break;
 		case ' ':
-			tmp[i++] = 0x81;
-			tmp[i++] = 0x40;
+			tmp[i++] = use_gbk ? 0xa1 : 0x81;
+			tmp[i++] = use_gbk ? 0xa1 : 0x40;
 			break;
 		default:
 			tmp[i++] = *p;

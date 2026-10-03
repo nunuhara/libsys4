@@ -28,6 +28,9 @@
 
 #include "system4/utfsjis.h"
 #include "system4/s2utbl.h"
+#include "system4/g2utbl.h"
+
+bool use_gbk;
 
 // Convert a character-index to a byte-index for a given SJIS string.
 int sjis_index(const char *_src, int index)
@@ -53,6 +56,16 @@ char *sjis_char2unicode(const char *_src, int *dst)
 	if (*src <= 0x7f) {
 		*dst = *src;
 		return (char*)src + 1;
+	}
+
+	if (use_gbk) {
+		*dst = '?';
+		if (!SJIS_2BYTE(*src) || src[1] < 0x40 || src[1] == 0x7f || src[1] > 0xfe)
+			return (char*)src + 1;
+		uint16_t u = g2u[src[0] - 0x81][src[1] - 0x40];
+		if (u)
+			*dst = u;
+		return (char*)src + 2;
 	}
 
 	if (*src >= 0xa0 && *src <= 0xdf) {
@@ -98,11 +111,11 @@ char *sjis2utf(const char *_src, size_t len) {
 }
 
 static int unicode_to_sjis(int u) {
-	for (int b1 = 0x81; b1 <= 0xff; b1++) {
-		if (b1 >= 0xa0 && b1 <= 0xdf)
+	for (int b1 = 0x81; b1 <= (use_gbk ? 0xfe : 0xff); b1++) {
+		if (!use_gbk && b1 >= 0xa0 && b1 <= 0xdf)
 			continue;
-		for (int b2 = 0x40; b2 <= 0xff; b2++) {
-			if (u == s2u[b1 - 0x80][b2 - 0x40])
+		for (int b2 = 0x40; b2 <= (use_gbk ? 0xfe : 0xff); b2++) {
+			if (u == (use_gbk ? g2u[b1 - 0x81][b2 - 0x40] : s2u[b1 - 0x80][b2 - 0x40]))
 				return b1 << 8 | b2;
 		}
 	}
@@ -135,7 +148,7 @@ char *utf2sjis(const char *_src, size_t len) {
 			continue;
 		}
 
-		if (u > 0xff60 && u <= 0xff9f) {
+		if (!use_gbk && u > 0xff60 && u <= 0xff9f) {
 			*dstp++ = u - 0xff60 + 0xa0;
 		} else {
 			int c = unicode_to_sjis(u);
