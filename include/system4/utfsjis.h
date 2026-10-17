@@ -28,7 +28,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SJIS_2BYTE(b) ( ((b) & 0xe0) == 0x80 || ((b) & 0xe0) == 0xe0 )
+// When true, SJIS-named functions and macros use GBK instead of Shift JIS.
+extern bool use_gbk;
+
+#define SJIS_2BYTE(b) (use_gbk \
+	? (uint8_t)(b) >= 0x81 && (uint8_t)(b) <= 0xfe \
+	: ((b) & 0xe0) == 0x80 || ((b) & 0xe0) == 0xe0)
 
 extern int   sjis_index(const char *src, int index);
 extern char *sjis_char2unicode(const char *src, int *dst);
