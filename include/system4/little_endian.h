@@ -62,7 +62,7 @@ static inline int32_t LittleEndian_getDW(const uint8_t *b, int i)
 	c3 = *(b + i  + 3);
 	d0 = c0 + (c1 << 8);
 	d1 = c2 + (c3 << 8);
-	return d0 + (d1 << 16);
+	return (int32_t)((uint32_t)d0 | ((uint32_t)d1 << 16));
 }
 
 static inline int16_t LittleEndian_getW(const uint8_t *b, int i)

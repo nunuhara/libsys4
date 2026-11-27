@@ -22,8 +22,10 @@
 #include <stdint.h>
 
 struct cg;
+struct cg_metrics;
 
 bool ajp_checkfmt(const uint8_t *data);
+bool ajp_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *metrics);
 void ajp_extract(const uint8_t *data, size_t size, struct cg *cg);
 
 #endif /* SYSTEM4_AJP_H */

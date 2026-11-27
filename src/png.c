@@ -29,7 +29,7 @@
 
 bool png_cg_checkfmt(const uint8_t *data)
 {
-	return png_check_sig(data, 8);
+	return data && png_check_sig((png_const_bytep)data, 8);
 }
 
 static void read_png_data(png_structp png_ptr, png_bytep out, size_t length)
@@ -38,136 +38,159 @@ static void read_png_data(png_structp png_ptr, png_bytep out, size_t length)
 		return;
 
 	struct buffer *buf = (struct buffer*) png_get_io_ptr(png_ptr);
-	if (buffer_remaining(buf) < length)
-		ERROR("png truncated"); // FIXME: make this recoverable
+	if (buffer_remaining(buf) < length) {
+		png_error(png_ptr, "png truncated");
+		return;
+	}
 
 	buffer_read_bytes(buf, out, length);
 }
 
-static void extract_rgb(png_structp png_ptr, png_infop info_ptr, struct cg *cg)
+struct png_reader {
+	png_structp png_ptr;
+	png_infop info_ptr;
+	png_uint_32 w;
+	png_uint_32 h;
+	int bit_depth;
+	int color_type;
+	struct buffer buf;
+};
+
+static bool png_init_structs(struct png_reader *r, const uint8_t *data, size_t size)
 {
-	const png_uint_32 row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-	uint8_t *row_data = xmalloc(row_bytes);
-	uint8_t *pixels = cg->pixels;
-
-	for (int row = 0; row < cg->metrics.h; row++) {
-		png_read_row(png_ptr, (png_bytep)row_data, NULL);
-		int row_off = row * cg->metrics.w * 4;
-		int i = 0;
-		for (int col = 0; col < cg->metrics.w; col++) {
-			pixels[row_off + col*4 + 0] = row_data[i++];
-			pixels[row_off + col*4 + 1] = row_data[i++];
-			pixels[row_off + col*4 + 2] = row_data[i++];
-			pixels[row_off + col*4 + 3] = 0xFF;
-		}
-	}
-
-	free(row_data);
-}
-
-static void extract_rgba(png_structp png_ptr, png_infop info_ptr, struct cg *cg)
-{
-	assert((int)png_get_rowbytes(png_ptr, info_ptr) == cg->metrics.w*4);
-
-	for (int row = 0; row < cg->metrics.h; row++) {
-		uint8_t *row_data = (uint8_t*)cg->pixels + row*cg->metrics.w*4;
-		png_read_row(png_ptr, (png_bytep)row_data, NULL);
-	}
-}
-
-static int png_read_init(png_structp *png_ptr_out, png_infop *info_ptr_out, struct cg_metrics *metrics, struct buffer *buf)
-{
-	png_structp png_ptr = NULL;
-	png_infop info_ptr = NULL;
-
-	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-	if (!png_ptr) {
-		WARNING("png_create_read_struct failed");
-		goto fail;
-	}
-
-	info_ptr = png_create_info_struct(png_ptr);
-	if (!info_ptr) {
-		WARNING("png_create_info_struct failed");
-		goto fail;
-	}
-
-	if (!png_check_sig((uint8_t*)buffer_strdata(buf), 8)) {
+	memset(r, 0, sizeof(*r));
+	if (!data || size < 8 || !png_check_sig((png_const_bytep)data, 8)) {
 		WARNING("Invalid PNG signature");
-		goto fail;
+		return false;
 	}
 
-	buffer_skip(buf, 8);
-	png_set_read_fn(png_ptr, buf, read_png_data);
-	png_set_sig_bytes(png_ptr, 8);
-
-	png_read_info(png_ptr, info_ptr);
-	int bit_depth = 0;
-	int color_type = -1;
-	png_uint_32 r = png_get_IHDR(png_ptr, info_ptr,
-				     (png_uint_32*)&metrics->w,
-				     (png_uint_32*)&metrics->h,
-				     &bit_depth,
-				     &color_type,
-				     NULL, NULL, NULL);
-	if (r != 1) {
-		WARNING("png_get_IHDR failed");
-		goto fail;
+	buffer_init(&r->buf, (uint8_t*)data, size);
+	r->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if (!r->png_ptr) {
+		WARNING("png_create_read_struct failed");
+		return false;
 	}
 
-	if (color_type != PNG_COLOR_TYPE_RGB && color_type != PNG_COLOR_TYPE_RGB_ALPHA) {
-		WARNING("Unsupported PNG color type");
-		goto fail;
+	r->info_ptr = png_create_info_struct(r->png_ptr);
+	if (!r->info_ptr) {
+		WARNING("png_create_info_struct failed");
+		png_destroy_read_struct(&r->png_ptr, NULL, NULL);
+		return false;
+	}
+	return true;
+}
+
+static bool png_populate_metrics(struct png_reader *r, struct cg_metrics *metrics)
+{
+	if (r->w == 0 || r->h == 0 || r->w > 32768 || r->h > 32768) {
+		WARNING("Invalid PNG dimensions: %ux%u", (unsigned)r->w, (unsigned)r->h);
+		return false;
 	}
 
+	bool has_trns = png_get_valid(r->png_ptr, r->info_ptr, PNG_INFO_tRNS) != 0;
+	metrics->x = 0;
+	metrics->y = 0;
+	metrics->w = (int)r->w;
+	metrics->h = (int)r->h;
 	metrics->bpp = 24;
 	metrics->has_pixel = true;
-	metrics->has_alpha = color_type == PNG_COLOR_TYPE_RGB_ALPHA;
+	metrics->has_alpha = (r->color_type & PNG_COLOR_MASK_ALPHA) != 0 || has_trns;
 	metrics->pixel_pitch = 3;
 	metrics->alpha_pitch = 1;
-
-	*png_ptr_out = png_ptr;
-	*info_ptr_out = info_ptr;
-	return 1;
-fail:
-	if (png_ptr)
-		png_destroy_read_struct(&png_ptr, info_ptr ? &info_ptr : NULL, NULL);
-	return 0;
-
+	return true;
 }
 
 bool png_cg_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *dst)
 {
-	struct buffer buf;
-	png_structp png_ptr = NULL;
-	png_infop info_ptr = NULL;
-
-	buffer_init(&buf, (uint8_t*)data, size);
-	if (!png_read_init(&png_ptr, &info_ptr, dst, &buf))
+	struct png_reader r;
+	if (!png_init_structs(&r, data, size))
 		return false;
 
-	png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+	if (setjmp(png_jmpbuf(r.png_ptr))) {
+		WARNING("png_cg_get_metrics failed");
+		png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
+		return false;
+	}
+
+	buffer_skip(&r.buf, 8);
+	png_set_read_fn(r.png_ptr, &r.buf, read_png_data);
+	png_set_sig_bytes(r.png_ptr, 8);
+	png_read_info(r.png_ptr, r.info_ptr);
+
+	if (png_get_IHDR(r.png_ptr, r.info_ptr, &r.w, &r.h, &r.bit_depth, &r.color_type, NULL, NULL, NULL) != 1 ||
+	    !png_populate_metrics(&r, dst)) {
+		png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
+		return false;
+	}
+
+	png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
 	return true;
 }
 
 void png_cg_extract(const uint8_t *data, size_t size, struct cg *cg)
 {
-	struct buffer buf;
-	png_structp png_ptr = NULL;
-	png_infop info_ptr = NULL;
+	struct png_reader r;
+	uint8_t * volatile pixels = NULL;
 
-	buffer_init(&buf, (uint8_t*)data, size);
-	if (!png_read_init(&png_ptr, &info_ptr, &cg->metrics, &buf))
+	if (!png_init_structs(&r, data, size))
 		return;
 
-	cg->pixels = xmalloc(cg->metrics.w * cg->metrics.h * 4);
-	if (cg->metrics.has_alpha) {
-		extract_rgba(png_ptr, info_ptr, cg);
-	} else {
-		extract_rgb(png_ptr, info_ptr, cg);
+	if (setjmp(png_jmpbuf(r.png_ptr))) {
+		WARNING("png_cg_extract failed");
+		free(pixels);
+		cg->pixels = NULL;
+		png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
+		return;
 	}
 
-	png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+	buffer_skip(&r.buf, 8);
+	png_set_read_fn(r.png_ptr, &r.buf, read_png_data);
+	png_set_sig_bytes(r.png_ptr, 8);
+	png_read_info(r.png_ptr, r.info_ptr);
+
+	if (png_get_IHDR(r.png_ptr, r.info_ptr, &r.w, &r.h, &r.bit_depth, &r.color_type, NULL, NULL, NULL) != 1 ||
+	    !png_populate_metrics(&r, &cg->metrics)) {
+		png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
+		return;
+	}
+
+	if (r.color_type == PNG_COLOR_TYPE_PALETTE)
+		png_set_palette_to_rgb(r.png_ptr);
+	if (r.color_type == PNG_COLOR_TYPE_GRAY && r.bit_depth < 8)
+		png_set_expand_gray_1_2_4_to_8(r.png_ptr);
+	if (png_get_valid(r.png_ptr, r.info_ptr, PNG_INFO_tRNS))
+		png_set_tRNS_to_alpha(r.png_ptr);
+	if (r.bit_depth == 16)
+		png_set_scale_16(r.png_ptr);
+	if (r.bit_depth < 8)
+		png_set_packing(r.png_ptr);
+	if (r.color_type == PNG_COLOR_TYPE_GRAY || r.color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+		png_set_gray_to_rgb(r.png_ptr);
+	png_set_add_alpha(r.png_ptr, 0xFF, PNG_FILLER_AFTER);
+	int nr_passes = png_set_interlace_handling(r.png_ptr);
+
+	png_read_update_info(r.png_ptr, r.info_ptr);
+
+	int out_color_type = png_get_color_type(r.png_ptr, r.info_ptr);
+	size_t w = (size_t)cg->metrics.w;
+	size_t h = (size_t)cg->metrics.h;
+	size_t row_bytes = png_get_rowbytes(r.png_ptr, r.info_ptr);
+	if (out_color_type != PNG_COLOR_TYPE_RGB_ALPHA || row_bytes != w * 4) {
+		WARNING("Unsupported PNG row layout (color_type=%d, row_bytes=%zu, w=%zu)", out_color_type, row_bytes, w);
+		png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
+		return;
+	}
+
+	pixels = xmalloc(w * h * 4);
+	for (int pass = 0; pass < nr_passes; pass++) {
+		for (size_t row = 0; row < h; row++) {
+			png_read_row(r.png_ptr, (png_bytep)(pixels + row * w * 4), NULL);
+		}
+	}
+
+	cg->type = ALCG_PNG;
+	cg->pixels = pixels;
+	png_destroy_read_struct(&r.png_ptr, &r.info_ptr, NULL);
 }
 
 int png_cg_write(struct cg *cg, FILE *f)
@@ -233,4 +256,3 @@ cleanup:
 		png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : NULL);
 	return r;
 }
-

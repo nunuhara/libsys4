@@ -46,6 +46,8 @@
 
 extern bool sys_silent;
 extern void (*sys_error_handler)(const char *msg);
+extern void (*sys_warning_handler)(const char *msg);
+extern void (*sys_exit_handler)(int code);
 _Noreturn void sys_verror(const char *fmt, va_list ap);
 _Noreturn void sys_error(const char *fmt, ...);
 void sys_vwarning(const char *fmt, va_list ap);
@@ -91,6 +93,10 @@ mem_alloc void *xrealloc_array(void *dst, size_t old_nmemb, size_t new_nmemb, si
 #ifdef _WIN32
 #define mmap(...) (ERROR("mmap not supported on Windows"), NULL)
 #define munmap(...) ERROR("munmap not supported on Windows")
+#define MAP_FAILED 0
+#elif defined(__SWITCH__)
+#define mmap(...) (ERROR("mmap not supported on Switch"), NULL)
+#define munmap(...) ERROR("munmap not supported on Switch")
 #define MAP_FAILED 0
 #else
 #include <sys/mman.h>

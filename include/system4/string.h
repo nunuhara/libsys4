@@ -52,6 +52,7 @@ void string_push_back(struct string **s, int c);
 void string_pop_back(struct string **s);
 void string_erase(struct string **s, int index);
 void string_clear(struct string *s);
+void string_clear_ref(struct string **s);
 
 // queries
 int string_find(const struct string *haystack, const struct string *needle);

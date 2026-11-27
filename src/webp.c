@@ -28,6 +28,8 @@
 
 bool webp_checkfmt(const uint8_t *data)
 {
+	if (!data)
+		return false;
 	if (data[0] != 'R' || data[1] != 'I' || data[2] != 'F' || data[3] != 'F')
 		return false;
 	if (data[8] != 'W' || data[9] != 'E' || data[10] != 'B' || data[11] != 'P')
@@ -48,7 +50,13 @@ static void webp_init_metrics(struct cg_metrics *m)
 
 void webp_get_metrics(uint8_t *data, size_t size, struct cg_metrics *m)
 {
-	WebPGetInfo(data, size, &m->w, &m->h);
+	m->w = 0;
+	m->h = 0;
+	if (!data || !WebPGetInfo(data, size, &m->w, &m->h) ||
+	    m->w <= 0 || m->h <= 0 || m->w > 32768 || m->h > 32768) {
+		memset(m, 0, sizeof(*m));
+		return;
+	}
 	webp_init_metrics(m);
 }
 
@@ -73,7 +81,23 @@ static int get_base_cg(uint8_t *data, size_t size)
 
 void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 {
+	static _Thread_local int over_depth = 0;
+
+	int info_w = 0, info_h = 0;
+	if (!data || !WebPGetInfo(data, size, &info_w, &info_h) ||
+	    info_w <= 0 || info_h <= 0 || info_w > 32768 || info_h > 32768) {
+		WARNING("Invalid WebP header or dimensions");
+		return;
+	}
+
 	cg->pixels = WebPDecodeRGBA(data, size, &cg->metrics.w, &cg->metrics.h);
+	if (!cg->pixels)
+		return;
+	if (cg->metrics.w <= 0 || cg->metrics.h <= 0 || cg->metrics.w > 32768 || cg->metrics.h > 32768) {
+		WebPFree(cg->pixels);
+		cg->pixels = NULL;
+		return;
+	}
 	webp_init_metrics(&cg->metrics);
 	cg->type = ALCG_WEBP;
 
@@ -81,11 +105,18 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 		return;
 
 	int base = get_base_cg(data, size);
-	if (base < 0)
+	if (base <= 0)
 		return;
 
-	// FIXME: possible infinite recursion on broken/malicious ALD
-	struct cg *base_cg = cg_load(ar, base-1);
+	if (over_depth >= 8) {
+		WARNING("webp base CG recursion depth exceeded (%d)", over_depth);
+		return;
+	}
+	over_depth++;
+	struct cg *base_cg = cg_has_base_loader_by_id()
+		? cg_load_base_by_id(ar, base)
+		: cg_load(ar, base - 1);
+	over_depth--;
 	if (!base_cg) {
 		WARNING("failed to load webp base CG");
 		return;
@@ -100,9 +131,10 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 	// mask alpha color
 	uint8_t *pixels = cg->pixels;
 	uint8_t *base_pixels = base_cg->pixels;
+	size_t stride = (size_t)cg->metrics.w * 4;
 	for (int row = 0; row < cg->metrics.h; row++) {
 		for (int x = 0; x < cg->metrics.w; x++) {
-			int p = cg->metrics.w*row*4 + x*4;
+			size_t p = (size_t)row * stride + (size_t)x * 4;
 			if (pixels[p] == 255 && pixels[p+1] == 0 && pixels[p+2] == 255) {
 				pixels[p+0] = base_pixels[p+0];
 				pixels[p+1] = base_pixels[p+1];
@@ -122,10 +154,15 @@ void webp_extract(uint8_t *data, size_t size, struct cg *cg, struct archive *ar)
 
 int webp_write(struct cg *cg, FILE *f)
 {
-	uint8_t *out;
+	uint8_t *out = NULL;
 	size_t len = WebPEncodeLosslessRGBA(cg->pixels, cg->metrics.w, cg->metrics.h, cg->metrics.w*4, &out);
+	if (!len || !out) {
+		WebPFree(out);
+		return 0;
+	}
 	if (fwrite(out, len, 1, f) != 1) {
 		WARNING("webp_write: %s", strerror(errno));
+		WebPFree(out);
 		return 0;
 	}
 	WebPFree(out);
@@ -135,7 +172,7 @@ int webp_write(struct cg *cg, FILE *f)
 void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 {
 	size_t len;
-	uint8_t *output;
+	uint8_t *output = NULL;
 	FILE *f = file_open_utf8(path, "wb");
 	if (!f) {
 		WARNING("fopen failed: %s", strerror(errno));
@@ -145,6 +182,11 @@ void webp_save(const char *path, uint8_t *pixels, int w, int h, bool alpha)
 		len = WebPEncodeLosslessRGBA(pixels, w, h, w*4, &output);
 	} else {
 		len = WebPEncodeLosslessRGB(pixels, w, h, w*3, &output);
+	}
+	if (!len || !output) {
+		fclose(f);
+		WebPFree(output);
+		return;
 	}
 	if (!fwrite(output, len, 1, f))
 		WARNING("fwrite failed: %s", strerror(errno));

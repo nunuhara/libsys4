@@ -152,11 +152,11 @@ static bool get_filemap(struct ald_archive *archive, FILE *fp)
 	archive->maxfile = (mapsize * 256) / 3;
 
 	// map of disk
-	archive->map_disk = malloc(archive->maxfile);
+	archive->map_disk = malloc(sizeof(*archive->map_disk) * archive->maxfile);
 	archive->map_ptr = malloc(sizeof(short) * archive->maxfile);
 
 	for (int i = 0; i < archive->maxfile; i++) {
-		archive->map_disk[i] = b[i * 3] - 1;
+		archive->map_disk[i] = (int16_t)b[i * 3] - 1;
 		archive->map_ptr[i] = LittleEndian_getW(b, i * 3 + 1) - 1;
 	}
 
@@ -187,8 +187,13 @@ static bool get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 		return false;
 	}
 
+	if (filecnt <= 0) {
+		free(b);
+		return false;
+	}
 	// allocate pointers buffer
 	archive->fileptr[disk] = calloc(filecnt, sizeof(int));
+	archive->filecnt[disk] = filecnt;
 
 	// store pointers
 	for (int i = 0; i < filecnt - 1; i++) {
@@ -208,7 +213,12 @@ static bool get_ptrmap(struct ald_archive *archive, FILE *fp, int disk)
 //        (3131), and `_ald_get` reports that it does. Then when the game tries
 //        to load the sound effect, `_ald_get` correctly reports that it does
 //        not exist, at which point the game calls `system.Error`.
-static int __attribute__((optimize("O0"))) _ald_get(struct ald_archive *ar, int no,
+#if defined(__clang__)
+__attribute__((optnone))
+#elif defined(__GNUC__)
+__attribute__((optimize("O0")))
+#endif
+static int _ald_get(struct ald_archive *ar, int no,
 		int *disk_out, int *dataptr_out)
 {
 	int disk, ptr, dataptr, dataptr2;
@@ -220,11 +230,11 @@ static int __attribute__((optimize("O0"))) _ald_get(struct ald_archive *ar, int 
 	// look up data in file map
 	disk = ar->map_disk[no];
 	ptr  = ar->map_ptr[no];
-	if (disk < 0 || ptr < 0)
+	if (disk < 0 || disk >= ALD_FILEMAX || ptr < 0)
 		return 0;
 
-	// no file registered
-	if (ar->fileptr[disk] == NULL)
+	// no file registered or out of pointer table range
+	if (ar->fileptr[disk] == NULL || ptr + 1 >= ar->filecnt[disk])
 		return 0;
 
 	// get pointer in file and size
@@ -260,10 +270,28 @@ struct archive_data *ald_get_descriptor(struct archive *_ar, int no)
 
 	// read header
 	if (ar->ar.mmapped) {
+		size_t fsize = ar->files[dfile->disk].size;
+		if ((size_t)dfile->dataptr + 16 > fsize) {
+			free(dfile);
+			return NULL;
+		}
 		uint8_t *hdr  = ar->files[dfile->disk].data + dfile->dataptr;
 		dfile->hdr_size = LittleEndian_getDW(hdr, 0);
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
-		dfile->data.name = ar->conv((char*)hdr + 16);
+		if (dfile->hdr_size < 16 || (size_t)dfile->dataptr + (size_t)dfile->hdr_size > fsize) {
+			WARNING("Invalid ALD header size: %d", dfile->hdr_size);
+			free(dfile);
+			return NULL;
+		}
+		size_t name_len = (size_t)(dfile->hdr_size - 16);
+		if (name_len == 0) {
+			dfile->data.name = ar->conv("");
+		} else {
+			char *tmp_name = xcalloc(name_len + 1, 1);
+			memcpy(tmp_name, hdr + 16, name_len);
+			dfile->data.name = ar->conv(tmp_name);
+			free(tmp_name);
+		}
 	} else {
 		uint8_t *hdr = xmalloc(16);
 		FILE *fp = ar->files[dfile->disk].fp;
@@ -278,10 +306,17 @@ struct archive_data *ald_get_descriptor(struct archive *_ar, int no)
 		}
 		dfile->hdr_size = LittleEndian_getDW(hdr, 0);
 		dfile->data.size = LittleEndian_getDW(hdr, 4);
+		if (dfile->hdr_size < 16) {
+			WARNING("Invalid ALD header size: %d", dfile->hdr_size);
+			free(hdr);
+			free(dfile);
+			return NULL;
+		}
 
 		// read name
-		dfile->data.name = xcalloc(dfile->hdr_size-16, 1);
-		if (fread(dfile->data.name, dfile->hdr_size-16, 1, fp) != 1) {
+		size_t name_len = (size_t)(dfile->hdr_size - 16);
+		dfile->data.name = xcalloc(name_len + 1, 1);
+		if (name_len > 0 && fread(dfile->data.name, name_len, 1, fp) != 1) {
 			WARNING("fread failed: %s", strerror(errno));
 			free(dfile->data.name);
 			free(hdr);
@@ -414,8 +449,11 @@ static void ald_free(struct archive *_ar)
 			fclose(ar->files[i].fp);
 		}
 		free(ar->files[i].name);
+		free(ar->fileptr[i]);
 	}
 
+	free(ar->map_disk);
+	free(ar->map_ptr);
 	free(ar);
 }
 
@@ -428,7 +466,7 @@ struct archive *ald_open_conv(char **files, int count, int flags, int *error, ch
 	struct ald_archive *ar = calloc(1, sizeof(struct ald_archive));
 	ar->conv = conv;
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH__)
 	flags &= ~ARCHIVE_MMAP;
 #endif
 

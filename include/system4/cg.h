@@ -41,6 +41,7 @@ enum cg_type {
 	ALCG_JPEG    = 9,
 	ALCG_PCF     = 10,
 	ALCG_ROU     = 11,
+	ALCG_TGA     = 12,
 	_ALCG_NR_FORMATS
 };
 
@@ -76,9 +77,20 @@ static inline const char *cg_file_extension(enum cg_type t)
 
 struct archive_data;
 
+typedef struct cg *(*cg_base_loader_by_name_fn)(struct archive *src_ar, const char *name);
+typedef struct cg *(*cg_base_loader_by_id_fn)(struct archive *src_ar, int id);
+
+void cg_set_base_loader_by_name(cg_base_loader_by_name_fn fn);
+void cg_set_base_loader_by_id(cg_base_loader_by_id_fn fn);
+bool cg_has_base_loader_by_name(void);
+bool cg_has_base_loader_by_id(void);
+struct cg *cg_load_base_by_name(struct archive *src_ar, const char *name);
+struct cg *cg_load_base_by_id(struct archive *src_ar, int id);
+
 enum cg_type cg_check_format(uint8_t *data);
 bool cg_get_metrics_data(struct archive_data *dfile, struct cg_metrics *dst);
 bool cg_get_metrics(struct archive *ar, int no, struct cg_metrics *dst);
+bool cg_get_metrics_file(const char *filename, struct cg_metrics *dst);
 struct cg *cg_load_data(struct archive_data *dfile);
 struct cg *cg_load(struct archive *ar, int no);
 struct cg *cg_load_file(const char *filename);

@@ -71,6 +71,7 @@ enum ini_error {
 struct ini_entry *ini_parse(const char *path, int *nr_entries);
 struct ini_entry *ini_make_entry(struct string *name, struct ini_value value);
 void ini_free_entry(struct ini_entry *entry);
+void ini_abort_parse(void);
 
 static inline struct ini_value ini_make_integer(int n)
 {

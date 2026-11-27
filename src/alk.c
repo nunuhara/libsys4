@@ -76,6 +76,9 @@ static bool alk_load_file(struct archive_data *data)
 	struct alk_archive *ar = (struct alk_archive*)data->archive;
 	struct alk_entry *e = &ar->files[data->no];
 
+	if (e->off > ar->file_size || e->size > ar->file_size - e->off)
+		return false;
+
 	if (ar->ar.mmapped) {
 		data->data = (uint8_t*)ar->mmap_ptr + e->off;
 		return true;
@@ -178,14 +181,18 @@ static bool alk_read_header(FILE *f, struct alk_archive *ar, int *error)
 		ar->files[i].size = LittleEndian_getDW(buf, 4);
 	}
 
-	fseek(f, 0, SEEK_END);
-	ar->file_size = ftell(f);
+	long file_size;
+	if (fseek(f, 0, SEEK_END) || (file_size = ftell(f)) < 0) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	ar->file_size = file_size;
 	return true;
 }
 
 struct alk_archive *alk_open(const char *file, int flags, int *error)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH__)
 	flags &= ~ARCHIVE_MMAP;
 #endif
 	FILE *fp;
@@ -229,6 +236,7 @@ struct alk_archive *alk_open(const char *file, int flags, int *error)
 	ar->ar.ops = &alk_archive_ops;
 	return ar;
 exit_err:
+	free(ar->files);
 	free(ar);
 	return NULL;
 }

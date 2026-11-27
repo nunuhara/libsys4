@@ -44,11 +44,12 @@ struct ald_archive {
 	// upper limit on how many files could be referenced by this archive
 	int maxfile;
 	// file numbers (from the file map)
-	char *map_disk;
+	int16_t *map_disk;
 	// ptrmap indices (from the file map)
 	short *map_ptr;
 	// pointer maps
 	int *fileptr[ALD_FILEMAX];
+	int filecnt[ALD_FILEMAX];
 	// filename conv function
 	char *(*conv)(const char*);
 };

@@ -93,7 +93,7 @@ static bool aar_exists_by_name(struct archive *_ar, const char *name, int *id_ou
 
 static bool aar_inflate_entry(struct archive_data *data, uint8_t *buf, uint32_t size)
 {
-	if (memcmp(buf, "ZLB\0", 4))
+	if (size < 16 || memcmp(buf, "ZLB\0", 4))
 		return false;
 	uint32_t version = LittleEndian_getDW(buf, 4);
 	if (version != 0) {
@@ -102,11 +102,11 @@ static bool aar_inflate_entry(struct archive_data *data, uint8_t *buf, uint32_t 
 	}
 	uint32_t out_size = LittleEndian_getDW(buf, 8);
 	uint32_t in_size = LittleEndian_getDW(buf, 12);
-	if (in_size + 16 > size) {
+	if (in_size > size - 16) {
 		WARNING("Bad ZLB size");
 		return false;
 	}
-	uint8_t *out = xmalloc(out_size);
+	uint8_t *out = xmalloc(out_size ? out_size : 1);
 	if (!zlib_decompress_exact(out, out_size, buf + 16, in_size)) {
 		WARNING("uncompress failed");
 		free(out);
@@ -131,12 +131,22 @@ static bool aar_load_file(struct archive_data *data)
 	struct aar_archive *ar = (struct aar_archive*)data->archive;
 	struct aar_entry *e = &ar->files[data->no];
 
-	while (e->type == AAR_SYMLINK) {
+	for (int depth = 0; e->type == AAR_SYMLINK; depth++) {
+		if (depth >= 16) {
+			WARNING("symlink loop: %s", ar->files[data->no].name);
+			return false;
+		}
 		e = ht_get_ignorecase(ar->ht, e->link_target, NULL);
 		if (!e) {
 			WARNING("orphaned symlink: %s", ar->files[data->no].name);
 			return false;
 		}
+	}
+
+	if ((size_t)e->off > ar->file_size || (size_t)e->size > ar->file_size - (size_t)e->off) {
+		WARNING("AAR entry out of bounds: '%s' (off=%u, size=%u, file_size=%zu)",
+			e->name, e->off, e->size, ar->file_size);
+		return false;
 	}
 
 	if (ar->ar.mmapped) {
@@ -148,8 +158,11 @@ static bool aar_load_file(struct archive_data *data)
 		return true;
 	}
 
-	fseek(ar->f, e->off, SEEK_SET);
-	uint8_t *buf = xmalloc(e->size);
+	if (fseek(ar->f, e->off, SEEK_SET) != 0) {
+		WARNING("Failed to seek '%s': %s", ar->filename, strerror(errno));
+		return false;
+	}
+	uint8_t *buf = xmalloc(e->size ? e->size : 1);
 	if (e->size > 0 && fread(buf, e->size, 1, ar->f) != 1) {
 		WARNING("Failed to read '%s': %s", ar->filename, strerror(errno));
 		free(buf);
@@ -237,19 +250,22 @@ static void aar_free(struct archive *_ar)
 		munmap(ar->mmap_ptr, ar->file_size);
 	if (ar->f)
 		fclose(ar->f);
-	ht_free(ar->ht);
+	if (ar->ht)
+		ht_free(ar->ht);
 	free(ar->filename);
 	free(ar->files);
 	free(ar->index_buf);
 	free(ar);
 }
 
-static char *get_string(uint8_t **ptr, struct aar_archive *ar)
+static char *get_string(uint8_t **ptr, uint8_t *end, struct aar_archive *ar)
 {
 	const int key = ar->version >= 2 ? 0x60 : 0;
 	char *str = (char *)*ptr;
-	while (**ptr)
+	while (*ptr < end && **ptr)
 		*(*ptr)++ -= key;
+	if (*ptr >= end)
+		return NULL;
 	(*ptr)++;
 	return str;
 }
@@ -275,48 +291,91 @@ static bool aar_read_index(FILE *f, struct aar_archive *ar, int *error)
 	ar->nr_files = LittleEndian_getDW(header, 8);
 	uint32_t first_entry_offset = LittleEndian_getDW(header, 12);
 
-	ar->index_buf = xmalloc(first_entry_offset);
-	memcpy(ar->index_buf, header, 16);
-	if (fread(ar->index_buf + 16, first_entry_offset - 16, 1, f) != 1) {
-		free(ar->index_buf);
+	if (fseek(f, 0, SEEK_END) != 0) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	long fsize = ftell(f);
+	if (fsize < 16) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	ar->file_size = (size_t)fsize;
+	if (fseek(f, 16, SEEK_SET) != 0) {
 		*error = ARCHIVE_FILE_ERROR;
 		return false;
 	}
 
-	ar->files = xcalloc(ar->nr_files, sizeof(struct aar_entry));
-	ar->ht = ht_create(ar->nr_files * 3 / 2);
+	if (first_entry_offset < 16 || (size_t)first_entry_offset > ar->file_size) {
+		WARNING("Invalid AAR first_entry_offset %u (file_size=%zu)",
+			first_entry_offset, ar->file_size);
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+	uint32_t min_entry_size = ar->version >= 2 ? 14 : 13;
+	if (ar->nr_files > (first_entry_offset - 12) / min_entry_size) {
+		WARNING("Invalid AAR nr_files %u for index size %u", ar->nr_files, first_entry_offset);
+		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
+		return false;
+	}
+
+	ar->index_buf = xmalloc(first_entry_offset);
+	memcpy(ar->index_buf, header, 16);
+	if (first_entry_offset > 16 && fread(ar->index_buf + 16, first_entry_offset - 16, 1, f) != 1) {
+		free(ar->index_buf);
+		ar->index_buf = NULL;
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+
+	ar->files = xcalloc(ar->nr_files ? ar->nr_files : 1, sizeof(struct aar_entry));
+	ar->ht = ht_create(ar->nr_files ? (size_t)ar->nr_files * 3 / 2 + 1 : 1);
 	uint8_t *p = ar->index_buf + 12;
-	for (int i = 0; i < ar->nr_files; i++) {
+	uint8_t *end = ar->index_buf + first_entry_offset;
+	for (uint32_t i = 0; i < ar->nr_files; i++) {
+		if ((size_t)(end - p) < 12) {
+			p = NULL;
+			break;
+		}
 		struct aar_entry *file = &ar->files[i];
 		file->off = LittleEndian_getDW(p, 0);
 		file->size = LittleEndian_getDW(p, 4);
 		file->type = LittleEndian_getDW(p, 8);
 		p += 12;
-		file->name = get_string(&p, ar);
-		if (ar->version >= 2)
-			file->link_target = get_string(&p, ar);
-		ht_put_ignorecase(ar->ht, file->name, file);
-		if (p > ar->index_buf + first_entry_offset)
+		file->name = get_string(&p, end, ar);
+		if (!file->name) {
+			p = NULL;
 			break;
+		}
+		if (ar->version >= 2) {
+			file->link_target = get_string(&p, end, ar);
+			if (!file->link_target) {
+				p = NULL;
+				break;
+			}
+		}
+		ht_put_ignorecase(ar->ht, file->name, file);
 	}
-	if (p != ar->index_buf + first_entry_offset) {
+	if (p != end) {
 		WARNING("unexpected index size");
-		ht_free(ar->ht);
+		if (ar->ht)
+			ht_free(ar->ht);
+		ar->ht = NULL;
 		free(ar->files);
+		ar->files = NULL;
 		free(ar->index_buf);
+		ar->index_buf = NULL;
 		*error = ARCHIVE_FILE_ERROR;
 		return false;
 	}
 
-	fseek(f, 0, SEEK_END);
-	ar->file_size = ftell(f);
 	fseek(f, 0, SEEK_SET);
 	return true;
 }
 
 struct aar_archive *aar_open(const char *file, int flags, int *error)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH__)
 	flags &= ~ARCHIVE_MMAP;
 #endif
 	FILE *fp;
@@ -348,6 +407,7 @@ struct aar_archive *aar_open(const char *file, int flags, int *error)
 		ar->mmap_ptr = mmap(0, ar->file_size, PROT_READ, MAP_SHARED, fd, 0);
 		close(fd);
 		if (ar->mmap_ptr == MAP_FAILED) {
+			ar->mmap_ptr = NULL;
 			WARNING("mmap failed: %s", strerror(errno));
 			*error = ARCHIVE_FILE_ERROR;
 			goto exit_err;
@@ -360,6 +420,6 @@ struct aar_archive *aar_open(const char *file, int flags, int *error)
 	ar->ar.ops = &aar_archive_ops;
 	return ar;
 exit_err:
-	free(ar);
+	aar_free(&ar->ar);
 	return NULL;
 }

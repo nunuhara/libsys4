@@ -23,16 +23,24 @@
 
 bool jpeg_cg_checkfmt(const uint8_t *data)
 {
-	return data[0] == 0xff && data[1] == 0xd8;
+	return data && data[0] == 0xff && data[1] == 0xd8;
 }
 
 static bool get_metrics(tjhandle decompressor, const uint8_t *data, size_t size, struct cg_metrics *dst)
 {
-	int width, height, subsamp;
+	int width = 0, height = 0, subsamp = 0;
+	if (!decompressor || !data || size < 2)
+		return false;
 	if (tjDecompressHeader2(decompressor, (unsigned char *)data, size, &width, &height, &subsamp) < 0) {
 		WARNING("tjDecompressHeader2 failed: %s", tjGetErrorStr());
 		return false;
 	}
+	if (width <= 0 || height <= 0 || width > 32768 || height > 32768) {
+		WARNING("Invalid JPEG dimensions: %dx%d", width, height);
+		return false;
+	}
+	dst->x = 0;
+	dst->y = 0;
 	dst->w = width;
 	dst->h = height;
 	dst->bpp = 24;
@@ -46,6 +54,8 @@ static bool get_metrics(tjhandle decompressor, const uint8_t *data, size_t size,
 bool jpeg_cg_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *dst)
 {
 	tjhandle decompressor = tjInitDecompress();
+	if (!decompressor)
+		return false;
 	bool result = get_metrics(decompressor, data, size, dst);
 	tjDestroy(decompressor);
 	return result;
@@ -54,11 +64,13 @@ bool jpeg_cg_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *ds
 void jpeg_cg_extract(const uint8_t *data, size_t size, struct cg *cg)
 {
 	tjhandle decompressor = tjInitDecompress();
+	if (!decompressor)
+		return;
 
 	if (!get_metrics(decompressor, data, size, &cg->metrics))
 		goto cleanup;
 
-	uint8_t *buf = xmalloc(cg->metrics.w * cg->metrics.h * 4);
+	uint8_t *buf = xmalloc((size_t)cg->metrics.w * (size_t)cg->metrics.h * 4);
 	if (tjDecompress2(decompressor, data, size, buf, cg->metrics.w, 0, cg->metrics.h, TJPF_RGBA, 0) < 0) {
 		WARNING("JPEG decompression failed: %s", tjGetErrorStr());
 		free(buf);

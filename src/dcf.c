@@ -42,18 +42,18 @@ struct dcf_header {
 
 static bool dcf_read_header(struct buffer *in, struct dcf_header *out)
 {
-	if (strncmp(buffer_strdata(in), "dcf ", 4)) {
+	if (buffer_remaining(in) < 8 || memcmp(buffer_strdata(in), "dcf ", 4)) {
 		WARNING("Not a DCF File");
 		return false;
 	}
 
 	buffer_skip(in, 4);
 	int32_t header_size = buffer_read_int32(in);
-	if (header_size < 0 || header_size > 4096) {
+	if (header_size < 20 || header_size > 4096 || (size_t)header_size > buffer_remaining(in)) {
 		WARNING("Invalid header size in DCF file");
 		return false;
 	}
-	size_t next_pos = in->index + header_size;
+	size_t next_pos = in->index + (size_t)header_size;
 
 	if (buffer_read_int32(in) != 1) {
 		WARNING("Unsupported DCF version");
@@ -70,7 +70,7 @@ static bool dcf_read_header(struct buffer *in, struct dcf_header *out)
 	}
 
 	int32_t name_length = buffer_read_int32(in);
-	if (name_length < 0 || name_length > 2000) {
+	if (name_length < 0 || name_length > 2000 || (size_t)name_length > next_pos - in->index) {
 		WARNING("Invalid base CG name length in DCF header");
 		return false;
 	}
@@ -95,27 +95,32 @@ static bool dcf_read_header(struct buffer *in, struct dcf_header *out)
 
 static uint8_t *dcf_read_dfdl(struct buffer *in, size_t *size_out)
 {
-	if (strncmp(buffer_strdata(in), "dfdl", 4)) {
+	if (buffer_remaining(in) < 8 || memcmp(buffer_strdata(in), "dfdl", 4)) {
 		WARNING("Expected dfdl section");
 		return NULL;
 	}
 
 	buffer_skip(in, 4);
 	int32_t dfdl_size = buffer_read_int32(in);
-	if (dfdl_size < 0 || dfdl_size > 10000) {
+	if (dfdl_size < 4 || dfdl_size > 10000 || (size_t)dfdl_size > buffer_remaining(in)) {
 		WARNING("Invalid size for dfdl section");
 		return NULL;
 	}
-	size_t next_pos = in->index + dfdl_size;
+	size_t next_pos = in->index + (size_t)dfdl_size;
 
-	size_t uncompressed_size = buffer_read_int32(in);
-	if (uncompressed_size > 40000) {
+	int32_t raw_uncomp = buffer_read_int32(in);
+	if (raw_uncomp < 4 || raw_uncomp > 40000) {
 		WARNING("Invalid size for uncompressed chunk map");
+		return NULL;
+	}
+	size_t uncompressed_size = (size_t)raw_uncomp;
+	if (in->size - in->index < (size_t)(dfdl_size - 4)) {
+		WARNING("Truncated dfdl payload");
 		return NULL;
 	}
 
 	uint8_t *chunk_map = xmalloc(uncompressed_size);
-	if (!zlib_decompress_exact(chunk_map, uncompressed_size, in->buf+in->index, dfdl_size - 4)) {
+	if (!zlib_decompress_exact(chunk_map, uncompressed_size, in->buf+in->index, (size_t)(dfdl_size - 4))) {
 		WARNING("Failed to uncompress chunk map");
 		free(chunk_map);
 		return NULL;
@@ -128,19 +133,19 @@ static uint8_t *dcf_read_dfdl(struct buffer *in, size_t *size_out)
 
 const uint8_t *dcf_read_dcgd(struct buffer *in, size_t *size_out)
 {
-	if (strncmp(buffer_strdata(in), "dcgd", 4)) {
+	if (buffer_remaining(in) < 8 || memcmp(buffer_strdata(in), "dcgd", 4)) {
 		WARNING("Expected dcgd section");
 		return NULL;
 	}
 
 	buffer_skip(in, 4);
 	int32_t dcgd_size = buffer_read_int32(in);
-	if (dcgd_size < 0 || dcgd_size > in->size - in->index) {
+	if (dcgd_size < 0 || (size_t)dcgd_size > buffer_remaining(in)) {
 		WARNING("Invalid size for dcgd section");
 		return NULL;
 	}
 
-	*size_out = dcgd_size;
+	*size_out = (size_t)dcgd_size;
 	return in->buf + in->index;
 }
 
@@ -162,6 +167,10 @@ void dcf_blit(struct cg *base, struct cg *diff, int x, int y, int w, int h)
 // FIXME: in xsystem4, this should be done in a shader
 void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, size_t chunk_map_size)
 {
+	if (!base || !diff || !base->pixels || !diff->pixels)
+		return;
+	if (base->metrics.w <= 0 || base->metrics.h <= 0)
+		return;
 	if (base->metrics.w != diff->metrics.w) {
 		WARNING("DCF base CG width differs: %u / %u", base->metrics.w, diff->metrics.w);
 		return;
@@ -174,12 +183,22 @@ void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, 
 
 	const int chunks_w = base->metrics.w / 16;
 	const int chunks_h = base->metrics.h / 16;
-	for (size_t i = 0; i < chunk_map_size; i++) {
-		if (chunk_map[i])
-			continue;
-		int chunk_x = i % chunks_w;
-		int chunk_y = i / chunks_w;
-		dcf_blit(base, diff, chunk_x * 16, chunk_y * 16, 16, 16);
+	if (chunks_w > 0 && chunks_h > 0) {
+		size_t max_chunks = (size_t)chunks_w * (size_t)chunks_h;
+		if (chunk_map_size > max_chunks) {
+			WARNING("DCF chunk map exceeds image chunk grid (%zu > %zu)", chunk_map_size, max_chunks);
+			return;
+		}
+		for (size_t i = 0; i < chunk_map_size; i++) {
+			if (chunk_map[i])
+				continue;
+			int chunk_x = (int)(i % (size_t)chunks_w);
+			int chunk_y = (int)(i / (size_t)chunks_w);
+			dcf_blit(base, diff, chunk_x * 16, chunk_y * 16, 16, 16);
+		}
+	} else if (chunk_map_size > 0) {
+		WARNING("DCF chunk map non-empty for sub-chunk image (%dx%d)", base->metrics.w, base->metrics.h);
+		return;
 	}
 
 	// any leftover pixels that don't fit in a chunk are carried by the diff CG
@@ -195,16 +214,27 @@ void dcf_apply_diff(struct cg *base, struct cg *diff, const uint8_t *chunk_map, 
 
 static struct cg *dcf_get_base_cg(const char *name, struct archive *ar)
 {
-	struct string *tmp = (ar->conv ? ar->conv : make_string)(name, strlen(name));
-	char *basename = archive_basename(tmp->text);
-	free_string(tmp);
-
-	struct archive_data *data = archive_get_by_basename(ar, basename);
-	free(basename);
-	if (!data)
+	static _Thread_local int dcf_depth = 0;
+	if (dcf_depth >= 8) {
+		WARNING("DCF base CG recursion depth exceeded (%d)", dcf_depth);
 		return NULL;
-	struct cg *cg = cg_load_data(data);
-	archive_free_data(data);
+	}
+	struct string *tmp = (ar && ar->conv ? ar->conv : make_string)(name, strlen(name));
+	dcf_depth++;
+	struct cg *cg = NULL;
+	if (cg_has_base_loader_by_name()) {
+		cg = cg_load_base_by_name(ar, tmp->text);
+	} else if (ar) {
+		char *basename = archive_basename(tmp->text);
+		struct archive_data *data = archive_get_by_basename(ar, basename);
+		free(basename);
+		if (data) {
+			cg = cg_load_data(data);
+			archive_free_data(data);
+		}
+	}
+	dcf_depth--;
+	free_string(tmp);
 	return cg;
 }
 
@@ -226,7 +256,7 @@ void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive
 		goto cleanup;
 	}
 
-	if (LittleEndian_getDW(chunk_map, 0) != chunk_map_size - 4) {
+	if (chunk_map_size < 4 || (size_t)(uint32_t)LittleEndian_getDW(chunk_map, 0) != chunk_map_size - 4) {
 		WARNING("Invalid size in chunk map");
 		goto cleanup;
 	}
@@ -239,7 +269,7 @@ void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive
 	}
 
 	if (!ar) {
-		qnt_extract(cg_data, cg);
+		qnt_extract_sized(cg_data, cg_data_size, cg);
 		goto cleanup;
 	}
 
@@ -248,7 +278,7 @@ void dcf_extract(const uint8_t *data, size_t size, struct cg *cg, struct archive
 		char *u = sjis2utf(hdr.base_cg_name, strlen(hdr.base_cg_name));
 		WARNING("Failed to load DCF base CG: \"%s\"", u);
 		free(u);
-		qnt_extract(cg_data, cg);
+		qnt_extract_sized(cg_data, cg_data_size, cg);
 		goto cleanup;
 	}
 
@@ -269,30 +299,46 @@ cleanup:
 	free(hdr.base_cg_name);
 }
 
-static const uint8_t *dcf_get_qnt(const uint8_t *data)
+static const uint8_t *dcf_get_qnt(const uint8_t *data, size_t size, size_t *qnt_size_out)
 {
-	if (data[0] != 'd' && data[1] != 'c' && data[2] != 'f' && data[3] != 0x20)
+	if (!data || size < 8 ||
+	    data[0] != 'd' || data[1] != 'c' || data[2] != 'f' || data[3] != 0x20)
 		return NULL;
 
-	int h2 = 8 + LittleEndian_getDW(data, 4);
-	if (data[h2] != 'd' || data[h2+1] != 'f' || data[h2+2] != 'd' || data[h2+3] != 'l')
+	uint32_t dcf_len = LittleEndian_getDW(data, 4);
+	if ((size_t)dcf_len > size - 8)
+		return NULL;
+	size_t h2 = 8 + (size_t)dcf_len;
+	if (size - h2 < 8 ||
+	    data[h2] != 'd' || data[h2+1] != 'f' || data[h2+2] != 'd' || data[h2+3] != 'l')
 		return NULL;
 
-	int h3 = h2 + 8 + LittleEndian_getDW(data, h2+4);
-	if (data[h3] != 'd' || data[h3+1] != 'c' || data[h3+2] != 'g' || data[h3+3] != 'd')
+	uint32_t dfdl_len = LittleEndian_getDW(data, h2 + 4);
+	if ((size_t)dfdl_len > size - h2 - 8)
+		return NULL;
+	size_t h3 = h2 + 8 + (size_t)dfdl_len;
+	if (size - h3 < 12 ||
+	    data[h3] != 'd' || data[h3+1] != 'c' || data[h3+2] != 'g' || data[h3+3] != 'd')
+		return NULL;
+
+	uint32_t dcgd_len = LittleEndian_getDW(data, h3 + 4);
+	if (dcgd_len < 4 || (size_t)dcgd_len > size - h3 - 8)
 		return NULL;
 
 	if (data[h3+8] != 'Q' || data[h3+9] != 'N' || data[h3+10] != 'T' || data[h3+11] != '\0')
 		return NULL;
 
+	if (qnt_size_out)
+		*qnt_size_out = dcgd_len;
 	return data + h3 + 8;
 }
 
-void dcf_get_metrics(const uint8_t *data, possibly_unused size_t size, struct cg_metrics *m)
+void dcf_get_metrics(const uint8_t *data, size_t size, struct cg_metrics *m)
 {
-	if (!(data = dcf_get_qnt(data)))
+	size_t qnt_size = 0;
+	if (!(data = dcf_get_qnt(data, size, &qnt_size)))
 		return;
-	qnt_get_metrics(data, m);
+	qnt_get_metrics_sized(data, qnt_size, m);
 }
 
 char *dcf_get_base_cg_name(const uint8_t *data, size_t size)

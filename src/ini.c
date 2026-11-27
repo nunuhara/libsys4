@@ -26,6 +26,19 @@
 
 extern FILE *yini_in;
 extern unsigned long yini_line;
+extern void yini_restart(FILE *input_file);
+
+extern int yini_lex_destroy(void);
+static FILE *active_ini;
+
+void ini_abort_parse(void)
+{
+	if (active_ini) {
+		fclose(active_ini);
+		active_ini = NULL;
+		yini_lex_destroy();
+	}
+}
 
 static void list_assign(struct ini_value *list, size_t i, struct ini_value *item)
 {
@@ -44,16 +57,31 @@ static void list_assign(struct ini_value *list, size_t i, struct ini_value *item
 struct ini_entry *ini_parse(const char *path, int *nr_entries)
 {
 	struct ini_entry _e;
+	FILE *fp = file_open_utf8(path, "rb");
 
-	if (!(yini_in = file_open_utf8(path, "rb"))) {
+	if (!fp) {
 		*nr_entries = INI_FILE_ERROR;
 		return NULL;
 	}
+	unsigned char bom[3];
+	if (fread(bom, 1, 3, fp) != 3 || bom[0] != 0xEF || bom[1] != 0xBB || bom[2] != 0xBF) {
+		fseek(fp, 0, SEEK_SET);
+	}
+	yini_restart(fp);
 	yini_line = 1;
+	yini_entries = NULL;
+	active_ini = fp;
 	yini_parse();
+	active_ini = NULL;
+	fclose(fp);
 
 	kvec_t(struct ini_entry) entries;
 	kv_init(entries);
+
+	if (!yini_entries) {
+		*nr_entries = 0;
+		return NULL;
+	}
 
 	for (size_t i = 0; i < kv_size(*yini_entries); i++) {
 		struct ini_entry *e = kv_A(*yini_entries, i);
@@ -100,6 +128,7 @@ struct ini_entry *ini_parse(const char *path, int *nr_entries)
 	}
 	kv_destroy(*yini_entries);
 	free(yini_entries);
+	yini_entries = NULL;
 
 	*nr_entries = kv_size(entries);
 	return kv_data(entries);

@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,7 +33,7 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include <direct.h>
-#else
+#elif !defined(__SWITCH__)
 #include <libgen.h>
 #endif
 
@@ -81,6 +82,29 @@ static char *normalize_to_nfc(const char *str)
 }
 
 #endif
+
+static _Atomic uint64_t g_file_mutation_gen = 1;
+
+uint64_t file_mutation_gen(void)
+{
+	return atomic_load_explicit(&g_file_mutation_gen, memory_order_acquire);
+}
+
+void file_note_fs_mutation(void)
+{
+	atomic_fetch_add_explicit(&g_file_mutation_gen, 1, memory_order_release);
+}
+
+static inline bool mode_mutates_fs(const char *mode)
+{
+	if (!mode)
+		return false;
+	for (const char *p = mode; *p; p++) {
+		if (*p == 'w' || *p == 'a' || *p == '+')
+			return true;
+	}
+	return false;
+}
 
 #ifdef _WIN32
 static int make_dir(const char *path, possibly_unused int mode)
@@ -140,6 +164,8 @@ int remove_utf8(const char *path)
 	wchar_t *wpath = utf8_to_wchar(path);
 	int r = _wremove(wpath);
 	free(wpath);
+	if (r == 0)
+		file_note_fs_mutation();
 	return r;
 }
 
@@ -148,6 +174,8 @@ int rmdir_utf8(const char *path)
 	wchar_t *wpath = utf8_to_wchar(path);
 	int r = _wrmdir(wpath);
 	free(wpath);
+	if (r == 0)
+		file_note_fs_mutation();
 	return r;
 }
 
@@ -159,6 +187,8 @@ FILE *file_open_utf8(const char *path, const char *mode)
 
 	FILE *f = _wfopen(wpath, wmode);
 	free(wpath);
+	if (f && mode_mutates_fs(mode))
+		file_note_fs_mutation();
 	return f;
 }
 
@@ -246,31 +276,86 @@ char *realpath_utf8(const char *upath)
 
 int remove_utf8(const char *path)
 {
-	return remove(path);
+	int r = remove(path);
+	if (r == 0)
+		file_note_fs_mutation();
+	return r;
 }
 
 int rmdir_utf8(const char *path)
 {
-	return rmdir(path);
+	int r = rmdir(path);
+	if (r == 0)
+		file_note_fs_mutation();
+	return r;
 }
 
 FILE *file_open_utf8(const char *path, const char *mode)
 {
-	return fopen(path, mode);
+	FILE *f = fopen(path, mode);
+	if (f && mode_mutates_fs(mode))
+		file_note_fs_mutation();
+	return f;
 }
+
+#ifdef __SWITCH__
+static char *switch_path_component(const char *path, char *buf)
+{
+	if (!path || !*path)
+		path = ".";
+	snprintf(buf, PATH_MAX, "%s", path);
+	char *start = buf;
+	char *mount = strchr(buf, ':');
+	if (mount && mount[1] == '/' && strcspn(buf, "/") == (size_t)(mount + 1 - buf))
+		start = mount + 1;
+	size_t len = strlen(start);
+	while (len > 1 && start[len - 1] == '/')
+		start[--len] = '\0';
+	return start;
+}
+#endif
 
 char *path_dirname(const char *path)
 {
 	static char buf[PATH_MAX];
-	strncpy(buf, path, PATH_MAX-1);
+#ifdef __SWITCH__
+	char *start = switch_path_component(path, buf);
+	char *slash = strrchr(start, '/');
+	if (!slash)
+		return ".";
+	while (slash > start && slash[-1] == '/')
+		slash--;
+	*(slash == start ? slash + 1 : slash) = '\0';
+	return buf;
+#else
+	if (!path)
+		return ".";
+	size_t n = strlen(path);
+	if (n >= PATH_MAX)
+		n = PATH_MAX - 1;
+	memmove(buf, path, n);
+	buf[n] = '\0';
 	return dirname(buf);
+#endif
 }
 
 char *path_basename(const char *path)
 {
 	static char buf[PATH_MAX];
-	strncpy(buf, path, PATH_MAX-1);
+#ifdef __SWITCH__
+	char *start = switch_path_component(path, buf);
+	char *slash = strrchr(start, '/');
+	return slash && slash[1] ? slash + 1 : start;
+#else
+	if (!path)
+		return ".";
+	size_t n = strlen(path);
+	if (n >= PATH_MAX)
+		n = PATH_MAX - 1;
+	memmove(buf, path, n);
+	buf[n] = '\0';
 	return basename(buf);
+#endif
 }
 #endif
 
@@ -281,7 +366,7 @@ void *file_read(const char *path, size_t *len_out)
 	uint8_t *buf;
 
 	ustat s;
-	if (stat_utf8(path, &s) < 0) {
+	if (!path || stat_utf8(path, &s) < 0) {
 		return NULL;
 	}
 	if (!S_ISREG(s.st_mode)) {
@@ -292,12 +377,19 @@ void *file_read(const char *path, size_t *len_out)
 	if (!(fp = file_open_utf8(path, "rb")))
 		return NULL;
 
-	fseek(fp, 0, SEEK_END);
+	if (fseek(fp, 0, SEEK_END) != 0) {
+		fclose(fp);
+		return NULL;
+	}
 	len = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
+	if (len < 0 || fseek(fp, 0, SEEK_SET) != 0) {
+		fclose(fp);
+		return NULL;
+	}
 
-	buf = xmalloc(len + 1);
-	if (fread(buf, len, 1, fp) != 1) {
+	buf = xmalloc((size_t)len + 1);
+	if (len > 0 && fread(buf, (size_t)len, 1, fp) != 1) {
+		fclose(fp);
 		free(buf);
 		return NULL;
 	}
@@ -307,7 +399,7 @@ void *file_read(const char *path, size_t *len_out)
 	}
 
 	if (len_out)
-		*len_out = len;
+		*len_out = (size_t)len;
 
 	buf[len] = 0;
 	return buf;
@@ -318,7 +410,7 @@ bool file_write(const char *path, uint8_t *data, size_t data_size)
 	FILE *fp = file_open_utf8(path, "wb");
 	if (!fp)
 		return false;
-	int r = fwrite(data, data_size, 1, fp);
+	int r = data_size == 0 ? 1 : (int)fwrite(data, data_size, 1, fp);
 	int tmp = errno;
 	fclose(fp);
 	errno = tmp;
@@ -338,6 +430,8 @@ bool file_copy(const char *src, const char *dst)
 
 bool file_exists(const char *path)
 {
+	if (!path)
+		return false;
 #ifdef _WIN32
 	wchar_t *wpath = utf8_to_wchar(path);
 	bool r = _waccess(wpath, F_OK) != -1;
@@ -376,15 +470,11 @@ struct string *path_join_string(struct string *dir, struct string *base)
 	return out;
 }
 
-char *path_get_icase(const char *path)
+static char *path_find_icase(const char *dir_name, const char *base_name)
 {
-	char *dir_name = path_dirname(path);
-	char *base_name = path_basename(path);
 	DIR *d = opendir(dir_name);
-	if (!d) {
-		// FIXME: shouldn't assume case of dir_name is correct
+	if (!d)
 		return NULL;
-	}
 
 	struct dirent *dir;
 	while ((dir = readdir(d)) != NULL) {
@@ -406,6 +496,49 @@ char *path_get_icase(const char *path)
 	return NULL;
 }
 
+char *path_get_icase(const char *path)
+{
+#ifdef __SWITCH__
+	if (!path || !*path)
+		return NULL;
+	char *parts = xstrdup(path);
+	char *slash = strchr(parts, '/');
+	char *rest = parts;
+	char *resolved;
+	if (slash && (slash == parts || slash[-1] == ':')) {
+		const size_t len = slash + 1 - parts;
+		resolved = xmalloc(len + 1);
+		memcpy(resolved, parts, len);
+		resolved[len] = '\0';
+		rest = slash + 1;
+	} else {
+		resolved = xstrdup(".");
+	}
+	char *state;
+	for (char *part = strtok_r(rest, "/", &state); part; part = strtok_r(NULL, "/", &state)) {
+		if (!strcmp(part, "."))
+			continue;
+		char *next = path_join(resolved, part);
+		if (!file_exists(next)) {
+			free(next);
+			next = path_find_icase(resolved, part);
+		}
+		free(resolved);
+		resolved = next;
+		if (!resolved)
+			break;
+	}
+	free(parts);
+	if (resolved && !file_exists(resolved)) {
+		free(resolved);
+		return NULL;
+	}
+	return resolved;
+#else
+	return path_find_icase(path_dirname(path), path_basename(path));
+#endif
+}
+
 const char *file_extension(const char *path)
 {
 	const char *ext = strrchr(path, '.');
@@ -415,14 +548,16 @@ const char *file_extension(const char *path)
 bool is_directory(const char *path)
 {
 	ustat s;
-	stat_utf8(path, &s);
+	if (!path || stat_utf8(path, &s) < 0)
+		return false;
 	return S_ISDIR(s.st_mode);
 }
 
 off_t file_size(const char *path)
 {
 	ustat s;
-	stat_utf8(path, &s);
+	if (!path || stat_utf8(path, &s) < 0)
+		return -1;
 	if (!S_ISREG(s.st_mode))
 		return -1;
 	return s.st_size;
@@ -453,15 +588,26 @@ int mkdir_p(const char *path)
 	int mode = S_IRWXU;
 #endif
 
-	// Iterate the string
-	for (p = _path + 1; *p; p++) {
+	p = _path + 1;
+#ifdef __SWITCH__
+	char *slash = strchr(_path, '/');
+	if (slash && slash > _path && slash[-1] == ':')
+		p = slash + 1;
+#endif
+	bool created = false;
+	for (; *p; p++) {
 		if (*p == '/') {
 			// Temporarily truncate
 			*p = '\0';
 
 			if (make_dir(_path, mode) != 0) {
-				if (errno != EEXIST)
+				if (errno != EEXIST) {
+					if (created)
+						file_note_fs_mutation();
 					return -1;
+				}
+			} else {
+				created = true;
 			}
 
 			*p = '/';
@@ -469,9 +615,16 @@ int mkdir_p(const char *path)
 	}
 
 	if (make_dir(_path, mode) != 0) {
-		if (errno != EEXIST)
+		if (errno != EEXIST) {
+			if (created)
+				file_note_fs_mutation();
 			return -1;
+		}
+	} else {
+		created = true;
 	}
 
+	if (created)
+		file_note_fs_mutation();
 	return 0;
 }

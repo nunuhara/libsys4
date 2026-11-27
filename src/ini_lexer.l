@@ -23,6 +23,7 @@
 #include "ini_parser.tab.h"
 #include "system4.h"
 #include "system4/string.h"
+#include "system4/utfsjis.h"
 
 char string_buf[65536];
 char *string_buf_ptr;
@@ -61,7 +62,7 @@ Formation                 return FORMATION;
     \" {
         BEGIN(INITIAL);
         *string_buf_ptr = '\0';
-        yini_lval.s = make_string(string_buf, string_buf_ptr - string_buf);
+        yini_lval.s = sys4_source_make_string(string_buf, string_buf_ptr - string_buf);
         return STRING;
     }
 

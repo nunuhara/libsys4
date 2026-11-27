@@ -159,4 +159,3 @@ struct string *acx_get_string(struct acx *acx, int line, int col)
 	assert(col < acx->nr_columns);
 	return acx->lines[line*acx->nr_columns + col].s;
 }
-

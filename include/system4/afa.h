@@ -59,6 +59,8 @@ struct afa_archive {
 struct afa_archive *afa_open(const char *file, int flags, int *error);
 struct afa_archive *afa_open_conv(const char *file, int flags, int *error,
 				  struct string *(*conv)(const char*,size_t));
+struct afa_entry *afa_lookup_by_basename(struct afa_archive *ar, const char *name);
 struct archive_data *afa_entry_to_descriptor(struct afa_archive *ar, struct afa_entry *e);
+struct archive_data *afa_load_entry(struct afa_archive *ar, struct afa_entry *entry);
 
 #endif /* SYSTEM4_AFA_H */

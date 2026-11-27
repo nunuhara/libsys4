@@ -60,9 +60,21 @@ bool pms_checkfmt(const uint8_t *data)
 	return true;
 }
 
+bool pms_checkfmt_sized(const uint8_t *data, size_t size)
+{
+	if (!data || size < 32)
+		return false;
+	return pms_checkfmt(data);
+}
+
 bool pms8_checkfmt(const uint8_t *data)
 {
 	return pms_checkfmt(data) && data[6] == 8;
+}
+
+bool pms8_checkfmt_sized(const uint8_t *data, size_t size)
+{
+	return pms_checkfmt_sized(data, size) && data[6] == 8;
 }
 
 bool pms16_checkfmt(const uint8_t *data)
@@ -70,56 +82,84 @@ bool pms16_checkfmt(const uint8_t *data)
 	return pms_checkfmt(data) && data[6] == 16;
 }
 
+bool pms16_checkfmt_sized(const uint8_t *data, size_t size)
+{
+	return pms_checkfmt_sized(data, size) && data[6] == 16;
+}
+
 /* Convert PMS8 image data to bitmap. */
-static uint8_t *pms8_extract(struct pms_header *pms, const uint8_t *b)
+static uint8_t *pms8_extract(struct pms_header *pms, const uint8_t *b, const uint8_t *end)
 {
 	int n, c0, c1;
-	const int scanline = pms->width;
-	uint8_t *pic = xmalloc((pms->width+10)*(pms->height+10));
+	const size_t scanline = (size_t)pms->width;
+	const size_t npix = (size_t)pms->width * (size_t)pms->height;
+	uint8_t *pic = xcalloc(npix, 1);
 
 	// for each line...
-	for (int y = 0; y < pms->height; y ++) {
+	for (int y = 0; y < pms->height; y++) {
 		// for each pixel...
 		for (int x = 0; x < pms->width; ) {
-			int loc = y * scanline + x;
+			size_t loc = (size_t)y * scanline + (size_t)x;
+			if (b >= end)
+				goto err;
 			c0 = *b++;
 			// non-command byte: read 1 pixel into buffer
 			if (c0 <= 0xf7) {
-				pic[loc] = c0;
+				pic[loc] = (uint8_t)c0;
 				x++;
 			}
 			// copy n+3 pixels from previous line
 			else if (c0 == 0xff) {
+				if (b >= end)
+					goto err;
 				n = (*b++) + 3;
+				if (y < 1 || (size_t)n > npix - loc)
+					goto err;
+				for (int i = 0; i < n; i++)
+					pic[loc + (size_t)i] = pic[loc + (size_t)i - scanline];
 				x += n;
-				memcpy(pic + loc, pic + loc - scanline, n);
 			}
 			// copy n+3 pixels from 2 lines previous
 			else if (c0 == 0xfe) {
+				if (b >= end)
+					goto err;
 				n = (*b++) + 3;
+				if (y < 2 || (size_t)n > npix - loc)
+					goto err;
+				for (int i = 0; i < n; i++)
+					pic[loc + (size_t)i] = pic[loc + (size_t)i - scanline * 2];
 				x += n;
-				memcpy(pic + loc, pic + loc - scanline * 2, n);
 			}
 			// repeat 1 pixel n+4 times (1-byte RLE)
 			else if (c0 == 0xfd) {
+				if ((size_t)(end - b) < 2)
+					goto err;
 				n = (*b++) + 4;
-				x += n;
 				c0 = *b++;
-				memset(pic + loc, c0, n);
-			}
-			// repeast a sequence of 2 pixels n+3 times (2-byte RLE)
-			else if (c0 == 0xfc) {
-				n = ((*b++) + 3)  * 2;
+				if ((size_t)n > npix - loc)
+					goto err;
+				memset(pic + loc, c0, (size_t)n);
 				x += n;
+			}
+			// repeat a sequence of 2 pixels n+3 times (2-byte RLE)
+			else if (c0 == 0xfc) {
+				if ((size_t)(end - b) < 3)
+					goto err;
+				n = ((*b++) + 3) * 2;
 				c0 = *b++;
 				c1 = *b++;
-				for (int i = 0; i < n; i+=2) {
-					pic[loc+i]   = c0;
-					pic[loc+i+1] = c1;
+				if ((size_t)n > npix - loc)
+					goto err;
+				for (int i = 0; i < n; i += 2) {
+					pic[loc + (size_t)i]     = (uint8_t)c0;
+					pic[loc + (size_t)i + 1] = (uint8_t)c1;
 				}
+				x += n;
 			}
 			// not sure why this exists, probably padding
 			else {
+				if (b >= end)
+					goto err;
 				pic[loc] = *b++;
 				x++;
 			}
@@ -127,104 +167,143 @@ static uint8_t *pms8_extract(struct pms_header *pms, const uint8_t *b)
 	}
 
 	return pic;
+err:
+	WARNING("PMS8 stream out of bounds or truncated");
+	free(pic);
+	return NULL;
 }
 
 /* Convert PMS16 image data to bitmap. */
-static uint16_t *pms16_extract(struct pms_header *pms, const uint8_t *b)
+static uint16_t *pms16_extract(struct pms_header *pms, const uint8_t *b, const uint8_t *end)
 {
 	int n, c0, c1, pc0, pc1;
-	const int scanline = pms->width;
-	uint16_t *pic = xmalloc(sizeof(uint16_t) * (pms->width+10) * (pms->height+10));
+	const size_t scanline = (size_t)pms->width;
+	const size_t npix = (size_t)pms->width * (size_t)pms->height;
+	uint16_t *pic = xcalloc(npix, sizeof(uint16_t));
 
 	for (int y = 0; y < pms->height; y++) {
 		for (int x = 0; x < pms->width;) {
-			int loc = y * scanline + x;
+			size_t loc = (size_t)y * scanline + (size_t)x;
+			if (b >= end)
+				goto err;
 			c0 = *b++;
 			// non-command byte: read 1 pixel into buffer
 			if (c0 <= 0xf7) {
+				if (b >= end)
+					goto err;
 				c1 = *b++;
+				pic[loc] = (uint16_t)(c0 | (c1 << 8));
 				x++;
-				pic[loc] = c0 | (c1 << 8);
 			}
 			// copy n+2 pixels from previous line into buffer
 			else if (c0 == 0xff) {
+				if (b >= end)
+					goto err;
 				n = (*b++) + 2;
-				x += n;
+				if (y < 1 || (size_t)n > npix - loc)
+					goto err;
 				for (int i = 0; i < n; i++) {
-					pic[loc + i] = pic[loc + i - scanline];
+					pic[loc + (size_t)i] = pic[loc + (size_t)i - scanline];
 				}
+				x += n;
 			}
 			// copy n+2 pixels from 2 lines previous
 			else if (c0 == 0xfe) {
+				if (b >= end)
+					goto err;
 				n = (*b++) + 2;
-				x += n;
+				if (y < 2 || (size_t)n > npix - loc)
+					goto err;
 				for (int i = 0; i < n; i++) {
-					pic[loc + i] = pic[loc + i - scanline * 2];
+					pic[loc + (size_t)i] = pic[loc + (size_t)i - scanline * 2];
 				}
+				x += n;
 			}
 			// repeat a pixel n+3 times (1-byte RLE)
 			else if (c0 == 0xfd) {
+				if ((size_t)(end - b) < 3)
+					goto err;
 				n = (*b++) + 3;
-				x += n;
 				c0 = *b++;
 				c1 = *b++;
+				if ((size_t)n > npix - loc)
+					goto err;
 				pc0 = c0 | (c1 << 8);
 				for (int i = 0; i < n; i++) {
-					pic[loc + i] = pc0;
+					pic[loc + (size_t)i] = (uint16_t)pc0;
 				}
+				x += n;
 			}
 			// repeat a sequence of 2 pixels n+2 times (2-byte RLE)
 			else if (c0 == 0xfc) {
+				if ((size_t)(end - b) < 5)
+					goto err;
 				n = ((*b++) + 2) * 2;
-				x += n;
 				c0 = *b++;
 				c1 = *b++;
 				pc0 = c0 | (c1 << 8);
 				c0 = *b++;
 				c1 = *b++;
 				pc1 = c0 | (c1 << 8);
-				for (int i = 0; i < n; i+=2) {
-					pic[loc + i    ] = pc0;
-					pic[loc + i + 1] = pc1;
+				if ((size_t)n > npix - loc)
+					goto err;
+				for (int i = 0; i < n; i += 2) {
+					pic[loc + (size_t)i    ] = (uint16_t)pc0;
+					pic[loc + (size_t)i + 1] = (uint16_t)pc1;
 				}
+				x += n;
 			}
 			// copy 1 pixel from previous line (left diagonal)
 			else if (c0 == 0xfb) {
-				x++;
+				if (loc < scanline + 1)
+					goto err;
 				pic[loc] = pic[loc - scanline - 1];
+				x++;
 			}
 			// copy 1 pixel from previous line (right diagonal)
 			else if (c0 == 0xfa) {
-				x++;
+				if (y < 1 || loc - scanline + 1 >= npix)
+					goto err;
 				pic[loc] = pic[loc - scanline + 1];
+				x++;
 			}
 			// this one's a bit tricky, but basically what this does is it
 			// combines one byte with the next n bytes
 			else if (c0 == 0xf9) {
+				if (b >= end)
+					goto err;
 				n = (*b++) + 1;
-				x += n;
+				if ((size_t)(end - b) < (size_t)n + 1 || (size_t)n > npix - loc)
+					goto err;
 				c0 = *b++;
 				c1 = *b++;
 				pc0 = ((c0 & 0xe0)<<8) + ((c0 & 0x18)<<6) + ((c0 & 0x07)<<2);
 				pc1 = ((c1 & 0xc0)<<5) + ((c1 & 0x3c)<<3) + (c1 & 0x03);
-				pic[loc] = pc0 + pc1;
+				pic[loc] = (uint16_t)(pc0 + pc1);
 				for (int i = 1; i < n; i++) {
 					c1 = *b++;
 					pc1 = ((c1 & 0xc0)<<5) + ((c1 & 0x3c)<<3) + (c1 & 0x03);
-					pic[loc + i] = pc0 | pc1;
+					pic[loc + (size_t)i] = (uint16_t)(pc0 | pc1);
 				}
+				x += n;
 			}
 			// not sure why this exists, probably padding
 			else {
+				if ((size_t)(end - b) < 2)
+					goto err;
 				c0 = *b++;
 				c1 = *b++;
+				pic[loc] = (uint16_t)(c0 | (c1 << 8));
 				x++;
-				pic[loc] = c0 | (c1 << 8);
 			}
 		}
 	}
 
 	return pic;
+err:
+	WARNING("PMS16 stream out of bounds or truncated");
+	free(pic);
+	return NULL;
 }
 
 static void pms_read_header(struct pms_header *hdr, const uint8_t *data)
@@ -265,17 +344,41 @@ bool pms_get_metrics(const uint8_t *data, struct cg_metrics *dst)
 	return true;
 }
 
+static bool pms_validate_dims_and_offsets(const struct pms_header *pms, size_t size)
+{
+	if (pms->width <= 0 || pms->height <= 0 || pms->width > 32768 || pms->height > 32768) {
+		WARNING("Invalid PMS dimensions: %dx%d", pms->width, pms->height);
+		return false;
+	}
+	if ((size_t)pms->width > SIZE_MAX / 4 / (size_t)pms->height) {
+		WARNING("PMS pixel allocation overflow: %dx%d", pms->width, pms->height);
+		return false;
+	}
+	if (pms->dp < 0 || (size_t)pms->dp > size) {
+		WARNING("PMS pixel offset out of bounds");
+		return false;
+	}
+	if (pms->pp < 0 || (size_t)pms->pp > size) {
+		WARNING("PMS palette/alpha offset out of bounds");
+		return false;
+	}
+	return true;
+}
+
 /* Load a PMS8 CG as an alpha-map. */
-static void pms8_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
+static void pms8_load(const uint8_t *data, size_t size, struct pms_header *pms, struct cg *cg)
 {
 	cg->type = ALCG_PMS8;
-	uint8_t *alpha = pms8_extract(pms, data + pms->dp);
+	uint8_t *alpha = pms8_extract(pms, data + pms->dp, data + size);
+	if (!alpha)
+		return;
 
 	// Convert to RGBA
-	cg->pixels = xmalloc(pms->width * pms->height * 4);
+	size_t npix = (size_t)pms->width * (size_t)pms->height;
+	cg->pixels = xmalloc(npix * 4);
 	uint32_t *dst = cg->pixels;
-	for (int i = 0; i < pms->width * pms->height; i++) {
-		dst[i] = alpha[i] << 24;
+	for (size_t i = 0; i < npix; i++) {
+		dst[i] = (uint32_t)alpha[i] << 24;
 	}
 
 	free(alpha);
@@ -292,16 +395,23 @@ static uint32_t RGB565to8888(uint16_t pc, uint8_t a)
 	return r | g << 8 | b << 16 | a << 24;
 }
 
-static void pms16_load(const uint8_t *data, struct pms_header *pms, struct cg *cg)
+static void pms16_load(const uint8_t *data, size_t size, struct pms_header *pms, struct cg *cg)
 {
 	cg->type = ALCG_PMS16;
-	uint16_t *pixels = pms16_extract(pms, data + pms->dp);
-	uint8_t *alpha = pms->pp ? pms8_extract(pms, data + pms->pp) : NULL;
+	uint16_t *pixels = pms16_extract(pms, data + pms->dp, data + size);
+	if (!pixels)
+		return;
+	uint8_t *alpha = pms->pp ? pms8_extract(pms, data + pms->pp, data + size) : NULL;
+	if (pms->pp && !alpha) {
+		free(pixels);
+		return;
+	}
 
 	// Convert to RGBA
-	cg->pixels = xmalloc(pms->width * pms->height * 4);
+	size_t npix = (size_t)pms->width * (size_t)pms->height;
+	cg->pixels = xmalloc(npix * 4);
 	uint32_t *dst = cg->pixels;
-	for (int i = 0; i < pms->width * pms->height; i++)
+	for (size_t i = 0; i < npix; i++)
 		dst[i] = RGB565to8888(pixels[i], alpha ? alpha[i] : 0xff);
 
 	free(pixels);
@@ -310,45 +420,41 @@ static void pms16_load(const uint8_t *data, struct pms_header *pms, struct cg *c
 
 void pms_extract(const uint8_t *data, size_t size, struct cg *cg)
 {
+	if (!data || size < 44) {
+		WARNING("PMS data truncated (%zu bytes)", size);
+		return;
+	}
 	struct pms_header pms;
 	pms_read_header(&pms, data);
 	pms_init_metrics(&pms, &cg->metrics);
 
-	if ((size_t)pms.dp > size) {
-		WARNING("PMS pixel offset out of bounds");
+	if (!pms_validate_dims_and_offsets(&pms, size))
 		return;
-	}
-	if ((size_t)pms.pp > size) {
-		WARNING("PMS palette/alpha offset out of bounds");
-		return;
-	}
 
 	if (pms.bpp == 8)
-		pms8_load(data, &pms, cg);
+		pms8_load(data, size, &pms, cg);
 	else if (pms.bpp == 16)
-		pms16_load(data, &pms, cg);
+		pms16_load(data, size, &pms, cg);
 	else
 		WARNING("Unsupported PMS bpp: %d", pms.bpp);
 }
 
 uint8_t *pms_extract_mask(const uint8_t *data, size_t size)
 {
+	if (!data || size < 44) {
+		WARNING("PMS mask data truncated (%zu bytes)", size);
+		return NULL;
+	}
 	struct pms_header pms;
 	pms_read_header(&pms, data);
 
-	if ((size_t)pms.dp > size) {
-		WARNING("PMS pixel offset out of bounds");
+	if (!pms_validate_dims_and_offsets(&pms, size))
 		return NULL;
-	}
-	if ((size_t)pms.pp > size) {
-		WARNING("PMS palette/alpha offset out of bounds");
-		return NULL;
-	}
 
 	if (pms.bpp != 8) {
 		WARNING("PMS mask is not 8bpp");
 		return NULL;
 	}
 
-	return pms8_extract(&pms, data + pms.dp);
+	return pms8_extract(&pms, data + pms.dp, data + size);
 }

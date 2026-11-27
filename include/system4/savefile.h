@@ -74,6 +74,9 @@ struct gsave {
 	int32_t nr_struct_defs;
 	int32_t cap_struct_defs;
 	struct gsave_struct_def *struct_defs;
+	// version 8+
+	int32_t nr_comments;
+	struct string **comments;
 };
 
 enum gsave_record_type {
@@ -213,6 +216,7 @@ struct rsave_heap_frame {
 	int32_t nr_types;
 	int32_t *types;
 	int32_t struct_ptr;  // only in RSAVE_LOCALS, version 9+
+	int32_t parent_ptr;  // lexical environment, version 14
 	int32_t nr_slots;
 	int32_t slots[];
 };
@@ -251,14 +255,26 @@ struct rsave_heap_struct {
 	struct rsave_symbol struct_type;
 	int32_t nr_types;
 	int32_t *types;
+	int32_t nr_ctor_flags;  // version 14
+	int32_t *ctor_flags;
 	int32_t nr_slots;
 	int32_t slots[];
+};
+
+struct rsave_delegate_entry {
+	int32_t object;
+	struct rsave_symbol function;
+	int32_t environment;
 };
 
 struct rsave_heap_delegate {
 	enum rsave_heap_tag tag;  // RSAVE_DELEGATE
 	int32_t ref;
 	int32_t seq;
+	int32_t cursor;  // next multicast target, version 14
+	int32_t end;     // target count at CALLBEGIN, version 14
+	int32_t nr_entries;
+	struct rsave_delegate_entry *entries;
 	int32_t nr_slots;
 	int32_t slots[];
 };

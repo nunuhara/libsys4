@@ -84,8 +84,10 @@ struct ex_tree {
 	union {
 		struct {
 			uint32_t nr_children;
+			uint32_t name_hash_mask;
 			struct ex_value *_children;
 			struct ex_tree *children;
+			uint32_t *name_hash_slots;
 		};
 		struct ex_leaf leaf;
 	};
@@ -99,7 +101,9 @@ struct ex_block {
 
 struct ex {
 	uint32_t nr_blocks;
+	uint32_t name_hash_mask;
 	struct ex_block *blocks;
+	uint32_t *name_hash_slots;
 };
 
 uint8_t *ex_decrypt(const char *path, size_t *size, uint32_t *nr_blocks);

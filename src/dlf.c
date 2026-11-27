@@ -76,12 +76,26 @@ static bool dlf_load_file(struct archive_data *data)
 	struct dlf_archive *ar = (struct dlf_archive*)data->archive;
 	struct dlf_entry *e = &ar->files[data->no];
 
+	if ((size_t)e->off > ar->file_size || (size_t)e->size > ar->file_size - (size_t)e->off) {
+		WARNING("DLF entry out of bounds in '%s' (off=%u, size=%u, file_size=%zu)",
+			ar->filename ? ar->filename : "<dlf>", e->off, e->size, ar->file_size);
+		return false;
+	}
+
 	if (ar->ar.mmapped) {
 		data->data = (uint8_t*)ar->mmap_ptr + e->off;
 		return true;
 	}
 
-	fseek(ar->f, e->off, SEEK_SET);
+	if (e->size == 0) {
+		data->data = xcalloc(1, 1);
+		return true;
+	}
+
+	if (fseek(ar->f, e->off, SEEK_SET) != 0) {
+		WARNING("Failed to seek '%s': %s", ar->filename, strerror(errno));
+		return false;
+	}
 
 	data->data = xmalloc(e->size);
 	if (fread(data->data, e->size, 1, ar->f) != 1) {
@@ -175,15 +189,23 @@ static bool dlf_read_header(FILE *f, struct dlf_archive *ar, int *error)
 		ar->files[i].size = LittleEndian_getDW(buf, 4);
 	}
 
-	fseek(f, 0, SEEK_END);
-	ar->file_size = ftell(f);
+	if (fseek(f, 0, SEEK_END) != 0) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	long fsize = ftell(f);
+	if (fsize < 0) {
+		*error = ARCHIVE_FILE_ERROR;
+		return false;
+	}
+	ar->file_size = (size_t)fsize;
 	fseek(f, 0, SEEK_SET);
 	return true;
 }
 
 struct dlf_archive *dlf_open(const char *file, int flags, int *error)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__SWITCH__)
 	flags &= ~ARCHIVE_MMAP;
 #endif
 	FILE *fp;
@@ -215,6 +237,7 @@ struct dlf_archive *dlf_open(const char *file, int flags, int *error)
 		ar->mmap_ptr = mmap(0, ar->file_size, PROT_READ, MAP_SHARED, fd, 0);
 		close(fd);
 		if (ar->mmap_ptr == MAP_FAILED) {
+			ar->mmap_ptr = NULL;
 			WARNING("mmap failed: %s", strerror(errno));
 			*error = ARCHIVE_FILE_ERROR;
 			goto exit_err;
@@ -227,6 +250,6 @@ struct dlf_archive *dlf_open(const char *file, int flags, int *error)
 	ar->ar.ops = &dlf_archive_ops;
 	return ar;
 exit_err:
-	free(ar);
+	dlf_free(&ar->ar);
 	return NULL;
 }

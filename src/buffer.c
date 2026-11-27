@@ -30,7 +30,7 @@ void buffer_init(struct buffer *r, uint8_t *buf, size_t size)
 
 int32_t buffer_read_int32(struct buffer *r)
 {
-	if (r->index + 4 > r->size)
+	if (buffer_remaining(r) < 4)
 		ERROR("Out of bounds buffer read");
 	int32_t v = LittleEndian_getDW(r->buf, r->index);
 	r->index += 4;
@@ -39,14 +39,14 @@ int32_t buffer_read_int32(struct buffer *r)
 
 uint8_t buffer_read_u8(struct buffer *r)
 {
-	if (r->index + 1 > r->size)
+	if (buffer_remaining(r) < 1)
 		ERROR("Out of bounds buffer read");
 	return r->buf[r->index++];
 }
 
 uint16_t buffer_read_u16(struct buffer *r)
 {
-	if (r->index + 2 > r->size)
+	if (buffer_remaining(r) < 2)
 		ERROR("Out of bounds buffer read");
 	uint16_t v = LittleEndian_getW(r->buf, r->index);
 	r->index += 2;
@@ -62,23 +62,42 @@ float buffer_read_float(struct buffer *r)
 
 struct string *buffer_read_string(struct buffer *r)
 {
-	int len = strlen(buffer_strdata(r));
-	struct string *s = make_string(buffer_strdata(r), len);
+	size_t rem = buffer_remaining(r);
+	if (rem == 0)
+		return string_dup(&EMPTY_STRING);
+	const uint8_t *start = r->buf + r->index;
+	const uint8_t *nul = memchr(start, '\0', rem);
+	if (!nul) {
+		struct string *s = make_string((const char *)start, rem);
+		r->index = r->size;
+		return s;
+	}
+	size_t len = (size_t)(nul - start);
+	struct string *s = make_string((const char *)start, len);
 	buffer_skip(r, len + 1);
 	return s;
 }
 
 char *buffer_skip_string(struct buffer *r)
 {
-	char *s = buffer_strdata(r);
-	buffer_skip(r, strlen(s) + 1);
+	size_t rem = buffer_remaining(r);
+	if (rem == 0)
+		return "";
+	const uint8_t *start = r->buf + r->index;
+	const uint8_t *nul = memchr(start, '\0', rem);
+	if (!nul) {
+		r->index = r->size;
+		return "";
+	}
+	char *s = (char *)start;
+	buffer_skip(r, (size_t)(nul - start) + 1);
 	return s;
 }
 
 struct string *buffer_read_pascal_string(struct buffer *r)
 {
 	int32_t len = buffer_read_int32(r);
-	if (len < 0)
+	if (len < 0 || (size_t)len > buffer_remaining(r))
 		ERROR("Invalid string length: %d", len);
 	struct string *s = make_string((char*)r->buf+r->index, len);
 	r->index += len;
@@ -87,8 +106,10 @@ struct string *buffer_read_pascal_string(struct buffer *r)
 
 struct string *buffer_conv_pascal_string(struct buffer *buf, struct string *(*conv)(const char*,size_t))
 {
+	if (buffer_remaining(buf) < 4)
+		return NULL;
 	int32_t len = buffer_read_int32(buf);
-	if (len < 0)
+	if (len < 0 || (size_t)len > buffer_remaining(buf))
 		return NULL;
 	if (len == 0)
 		return string_dup(&EMPTY_STRING);
@@ -101,23 +122,27 @@ void buffer_read_bytes(struct buffer *r, uint8_t *dst, size_t n)
 {
 	if (buffer_remaining(r) < n)
 		ERROR("Out of bounds buffer read");
-	memcpy(dst, r->buf+r->index, n);
+	if (n > 0)
+		memcpy(dst, r->buf+r->index, n);
 	r->index += n;
 }
 
 void buffer_skip(struct buffer *r, size_t off)
 {
-	r->index = min(r->index + off, r->size);
+	if (off >= buffer_remaining(r))
+		r->index = r->size;
+	else
+		r->index += off;
 }
 
 size_t buffer_remaining(struct buffer *r)
 {
-	return r->size - r->index;
+	return r->index < r->size ? r->size - r->index : 0;
 }
 
 bool buffer_check_bytes(struct buffer *r, const char *data, size_t n)
 {
-	bool eq = buffer_remaining(r) >= n && !strncmp(buffer_strdata(r), data, n);
+	bool eq = buffer_remaining(r) >= n && !memcmp(buffer_strdata(r), data, n);
 	buffer_skip(r, n);
 	return eq;
 }

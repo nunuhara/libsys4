@@ -47,7 +47,9 @@ struct qnt_header {
 
 bool qnt_checkfmt(const uint8_t *data);
 bool qnt_get_metrics(const uint8_t *data, struct cg_metrics *dst);
+bool qnt_get_metrics_sized(const uint8_t *data, size_t size, struct cg_metrics *dst);
 void qnt_extract(const uint8_t *data, struct cg *cg);
+void qnt_extract_sized(const uint8_t *data, size_t size, struct cg *cg);
 void qnt_extract_header(const uint8_t *b, struct qnt_header *qnt);
 int qnt_write_file(struct cg *cg, FILE *f);
 uint8_t *qnt_write_mem(struct cg *cg, size_t *size_out);

@@ -14,7 +14,13 @@ else()
 endif()
 
 find_package(libjpeg-turbo REQUIRED)
-find_package(WebP REQUIRED)
+if(NINTENDO_SWITCH)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SWITCH_WEBP REQUIRED IMPORTED_TARGET libwebp)
+  add_library(WebP::webp ALIAS PkgConfig::SWITCH_WEBP)
+else()
+  find_package(WebP REQUIRED)
+endif()
 find_package(PNG REQUIRED)
 
 find_package(FLEX)
@@ -55,6 +61,7 @@ target_sources(sys4 PRIVATE
   src/savefile.c
   src/string.c
   src/system.c
+  src/tga.c
   src/utfsjis.c
   src/webp.c
   src/zlib.c
@@ -72,11 +79,16 @@ target_sources(sys4 PRIVATE
   )
 
 target_link_libraries(sys4 PRIVATE
-  m ${ZLIB_DEP} libjpeg-turbo::turbojpeg-static WebP::webp PNG::PNG)
+  m ${ZLIB_DEP} $<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg-static>,libjpeg-turbo::turbojpeg-static,libjpeg-turbo::turbojpeg> WebP::webp PNG::PNG)
 
 if (ANDROID)
   target_link_libraries(sys4 PRIVATE log)
 endif()
 if (APPLE)
-  target_link_libraries(sys4 PRIVATE "-framework CoreFoundation")
+  find_library(core_foundation CoreFoundation REQUIRED)
+  target_link_libraries(sys4 PRIVATE "${core_foundation}")
+endif()
+if (NOT WIN32 AND NOT ANDROID AND NOT APPLE AND NOT NINTENDO_SWITCH)
+  find_package(Threads REQUIRED)
+  target_link_libraries(sys4 PUBLIC Threads::Threads)
 endif()

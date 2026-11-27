@@ -79,7 +79,8 @@ enum ain_data_type {
 	AIN_ARRAY = 79,
 	AIN_REF_ARRAY = 80,
 	AIN_WRAP = 82, // some kind of wrapper type
-	AIN_OPTION = 86, // option type, has wrapped type in struct type
+	AIN_OPTION = 86, // option type, has wrapped type in array_type
+	AIN_REF_OPTION = 87,
 	AIN_UNKNOWN_TYPE_87 = 87,
 	// 2 values: [0] = struct page, [1] = vtable offset to inteface methods
 	AIN_IFACE = 89,
@@ -123,6 +124,7 @@ enum ain_data_type {
 	case AIN_REF_FLOAT:			\
 	case AIN_REF_STRING:			\
 	case AIN_REF_STRUCT:			\
+	case AIN_REF_ENUM:			\
 	case AIN_REF_ARRAY_INT:			\
 	case AIN_REF_ARRAY_FLOAT:		\
 	case AIN_REF_ARRAY_STRING:		\

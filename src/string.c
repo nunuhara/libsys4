@@ -109,27 +109,32 @@ struct string *string_dup(const struct string *in)
 struct string *integer_to_string(int n)
 {
 	char buf[512];
-	int len = snprintf(buf, 512, "%d", n);
+	int len = snprintf(buf, sizeof(buf), "%d", n);
+	if (len < 0)
+		len = 0;
+	else if ((size_t)len >= sizeof(buf))
+		len = sizeof(buf) - 1;
 	return make_string(buf, len);
 }
 
 static void number_zen2han(char *buf)
 {
-	for (int src = 0, dst = 0; buf[src];) {
+	int dst = 0;
+	for (int src = 0; buf[src];) {
 		uint8_t b1 = buf[src];
-		if (SJIS_2BYTE(b1)) {
+		if (SJIS_2BYTE(b1) && buf[src+1]) {
 			uint8_t b2 = buf[src+1];
-			int digit_base = use_gbk ? 0xb0 : 0x4f;
-			if (b1 == (use_gbk ? 0xa3 : 0x82) && b2 >= digit_base && b2 < digit_base + 10) {
+			int digit_base = sys4_text_is_gbk ? 0xb0 : 0x4f;
+			if (b1 == (sys4_text_is_gbk ? 0xa3 : 0x82) && b2 >= digit_base && b2 < digit_base + 10) {
 				buf[dst++] = '0' + (b2 - digit_base);
 				src += 2;
-			} else if (b1 == (use_gbk ? 0xa3 : 0x81) && b2 == (use_gbk ? 0xad : 0x7c)) {
+			} else if (b1 == (sys4_text_is_gbk ? 0xa3 : 0x81) && b2 == (sys4_text_is_gbk ? 0xad : 0x7c)) {
 				buf[dst++] = '-';
 				src += 2;
-			} else if (b1 == (use_gbk ? 0xa3 : 0x81) && b2 == (use_gbk ? 0xae : 0x44)) {
+			} else if (b1 == (sys4_text_is_gbk ? 0xa3 : 0x81) && b2 == (sys4_text_is_gbk ? 0xae : 0x44)) {
 				buf[dst++] = '.';
 				src += 2;
-			} else if (b1 == (use_gbk ? 0xa1 : 0x81) && b2 == (use_gbk ? 0xa1 : 0x40)) {
+			} else if (b1 == (sys4_text_is_gbk ? 0xa1 : 0x81) && b2 == (sys4_text_is_gbk ? 0xa1 : 0x40)) {
 				buf[dst++] = ' ';
 				src += 2;
 			} else {
@@ -140,6 +145,7 @@ static void number_zen2han(char *buf)
 			buf[dst++] = buf[src++];
 		}
 	}
+	buf[dst] = '\0';
 }
 
 int string_to_integer(struct string *s)
@@ -161,7 +167,11 @@ struct string *float_to_string(float f, int precision)
 		precision = 6;
 	}
 
-	len = snprintf(buf, 512, "%.*f", precision, f);
+	len = snprintf(buf, sizeof(buf), "%.*f", precision, f);
+	if (len < 0)
+		len = 0;
+	else if ((size_t)len >= sizeof(buf))
+		len = sizeof(buf) - 1;
 	return make_string(buf, len);
 }
 
@@ -180,33 +190,47 @@ struct string *string_copy(const struct string *s, int index, int len)
 {
 	if (index < 0)
 		index = 0;
-	if (len <= 0)
+	// System 4.x computes end = index + len and scans forward from char 0,
+	// copying through end-of-string when end is never reached (e.g. len < 0
+	// with index + len < 0, as in Evenicle's string splitter S_GETPART(s, 0, -1)).
+	if (len <= 0 && (int64_t)index + (int64_t)len >= 0)
 		return make_string("", 0);
-	if ((index = sjis_index(s->text, index)) < 0)
+	int start = sjis_index(s->text, index);
+	if (start < 0)
 		return make_string("", 0);
+	if (len < 0)
+		return make_string(s->text + start, s->size - start);
+	int copy_len = sjis_index(s->text + start, len);
+	if (copy_len < 0)
+		copy_len = s->size - start;
 
-	if ((len = sjis_index(s->text + index, len)) < 0)
-		len = s->size - index;
-
-	return make_string(s->text + index, len);
+	return make_string(s->text + start, copy_len);
 }
 
 void string_append_cstr(struct string **_a, const char *b, size_t b_size)
 {
 	if (!b_size)
 		return;
-	size_t a_size = (*_a)->size;
-	struct string *a = string_realloc(*_a, a_size + b_size);
-	memcpy(a->text + a_size, b, b_size);
+	struct string *old_a = *_a;
+	size_t a_size = old_a->size;
+	uintptr_t old_start = (uintptr_t)old_a->text;
+	uintptr_t old_end = (uintptr_t)(old_a->text + a_size + 1);
+	bool aliased = (uintptr_t)b >= old_start && (uintptr_t)b < old_end;
+	size_t b_off = aliased ? (size_t)((uintptr_t)b - old_start) : 0;
+
+	struct string *a = string_realloc(old_a, a_size + b_size);
+	const char *src = aliased ? (a->text + b_off) : b;
+	memmove(a->text + a_size, src, b_size);
+	a->text[a_size + b_size] = '\0';
 	*_a = a;
 }
 
 void string_append(struct string **_a, const struct string *b)
 {
-	size_t a_size = (*_a)->size;
-	struct string *a = string_realloc(*_a, a_size + b->size);
-	memcpy(a->text + a_size, b->text, b->size);
-	*_a = a;
+	size_t b_size = b->size;
+	if (!b_size)
+		return;
+	string_append_cstr(_a, b->text, b_size);
 }
 
 void string_push_back(struct string **_s, int c)
@@ -229,7 +253,7 @@ void string_pop_back(struct string **s)
 	int c = 0;
 	for (int i = 0; i < (*s)->size; i++) {
 		c = i;
-		if (SJIS_2BYTE((*s)->text[i])) {
+		if (SJIS_2BYTE((*s)->text[i]) && i + 1 < (*s)->size && (*s)->text[i + 1] != '\0') {
 			i++;
 		}
 	}
@@ -244,23 +268,40 @@ void string_erase(struct string **s, int index)
 		index = 0;
 	if (index >= (*s)->size)
 		return;
-	if ((index = sjis_index((*s)->text, index)) < 0)
+	if ((index = sjis_index((*s)->text, index)) < 0 || index >= (*s)->size)
 		return;
-	bytes = SJIS_2BYTE((*s)->text[index]) ? 2 : 1;
+	bytes = (SJIS_2BYTE((*s)->text[index]) && index + 1 < (*s)->size && (*s)->text[index + 1] != '\0') ? 2 : 1;
 
 	*s = cow_check(*s);
 	size_t size = (*s)->size - index - bytes;
-	for (size_t i = 0; i < size; i++) {
-		(*s)->text[index+i] = (*s)->text[index+bytes+i];
-	}
+	memmove((*s)->text + index, (*s)->text + index + bytes, size);
 	(*s)->size -= bytes;
 	(*s)->text[(*s)->size] = '\0';
 }
 
 void string_clear(struct string *s)
 {
+	if (!s || s->cow)
+		return;
 	s->size = 0;
 	s->text[0] = '\0';
+}
+
+void string_clear_ref(struct string **s)
+{
+	if (!s)
+		return;
+	if (!*s) {
+		*s = make_string("", 0);
+		return;
+	}
+	if ((*s)->cow) {
+		free_string(*s);
+		*s = make_string("", 0);
+		return;
+	}
+	(*s)->size = 0;
+	(*s)->text[0] = '\0';
 }
 
 int string_find(const struct string *haystack, const struct string *needle)
@@ -269,7 +310,7 @@ int string_find(const struct string *haystack, const struct string *needle)
 	for (int i = 0; i < haystack->size; i++, c++) {
 		if (!strncmp(haystack->text+i, needle->text, needle->size))
 			return c;
-		if (SJIS_2BYTE(haystack->text[i])) {
+		if (SJIS_2BYTE(haystack->text[i]) && i + 1 < haystack->size && haystack->text[i + 1] != '\0') {
 			i++;
 		}
 	}
@@ -281,12 +322,12 @@ int string_get_char(const struct string *str, int i)
 	// Comparing with the byte length is weird but this is how System4.0 works.
 	if (i < 0 || i > str->size)
 		ERROR("String index out of bounds");
-	if ((i = sjis_index(str->text, i)) < 0)
+	if ((i = sjis_index(str->text, i)) < 0 || i >= str->size)
 		return 0;
 
-	if (SJIS_2BYTE(str->text[i]))
+	if (SJIS_2BYTE(str->text[i]) && i + 1 < str->size && str->text[i + 1] != '\0')
 		return (uint8_t)str->text[i] | ((uint8_t)str->text[i+1] << 8);
-	return str->text[i];
+	return (uint8_t)str->text[i];
 }
 
 void string_set_char(struct string **_str, int i, unsigned int c)
@@ -297,7 +338,7 @@ void string_set_char(struct string **_str, int i, unsigned int c)
 	// Comparing with the byte length is weird but this is how System4.0 works.
 	if (i < 0 || i >= str->size)
 		ERROR("String index out of bounds");
-	if ((i = sjis_index(str->text, i)) < 0)
+	if ((i = sjis_index(str->text, i)) < 0 || i >= str->size)
 		return;
 
 	if (c == 0) {
@@ -308,7 +349,7 @@ void string_set_char(struct string **_str, int i, unsigned int c)
 	}
 
 	bytes_src = SJIS_2BYTE(c) ? 2 : 1;
-	bytes_dst = SJIS_2BYTE(str->text[i]) ? 2 : 1;
+	bytes_dst = (SJIS_2BYTE(str->text[i]) && i + 1 < str->size && str->text[i + 1] != '\0') ? 2 : 1;
 
 	if (bytes_src == 1 && bytes_dst == 1) {
 		str->text[i] = c;
@@ -339,26 +380,27 @@ void string_set_char(struct string **_str, int i, unsigned int c)
 
 static int number_han2zen(char *buf, size_t size)
 {
-	char *tmp = xmalloc(size*2);
+	if (!size) return 0;
+	char *tmp = xmalloc(size);
 	int i = 0;
-	for (char *p = buf; *p && i < DIGIT_MAX-2; p++) {
+	for (char *p = buf; *p && (size_t)i + 2 < size; p++) {
 		switch (*p) {
 		case '0': case '1': case '2': case '3': case '4':
 		case '5': case '6': case '7': case '8': case '9':
-			tmp[i++] = use_gbk ? 0xa3 : 0x82;
-			tmp[i++] = (use_gbk ? 0xb0 : 0x4f) + (*p - '0');
+			tmp[i++] = sys4_text_is_gbk ? 0xa3 : 0x82;
+			tmp[i++] = (sys4_text_is_gbk ? 0xb0 : 0x4f) + (*p - '0');
 			break;
 		case '-':
-			tmp[i++] = use_gbk ? 0xa3 : 0x81;
-			tmp[i++] = use_gbk ? 0xad : 0x7c;
+			tmp[i++] = sys4_text_is_gbk ? 0xa3 : 0x81;
+			tmp[i++] = sys4_text_is_gbk ? 0xad : 0x7c;
 			break;
 		case '.':
-			tmp[i++] = use_gbk ? 0xa3 : 0x81;
-			tmp[i++] = use_gbk ? 0xae : 0x44;
+			tmp[i++] = sys4_text_is_gbk ? 0xa3 : 0x81;
+			tmp[i++] = sys4_text_is_gbk ? 0xae : 0x44;
 			break;
 		case ' ':
-			tmp[i++] = use_gbk ? 0xa1 : 0x81;
-			tmp[i++] = use_gbk ? 0xa1 : 0x40;
+			tmp[i++] = sys4_text_is_gbk ? 0xa1 : 0x81;
+			tmp[i++] = sys4_text_is_gbk ? 0xa1 : 0x40;
 			break;
 		default:
 			tmp[i++] = *p;
@@ -373,6 +415,7 @@ static int number_han2zen(char *buf, size_t size)
 
 int int_to_cstr(char *buf, size_t size, int v, int figures, bool zero_pad, bool zenkaku)
 {
+	if (!size) return 0;
 	char fmt[64];
 	int i = 0;
 
@@ -386,7 +429,8 @@ int int_to_cstr(char *buf, size_t size, int v, int figures, bool zero_pad, bool 
 	fmt[i++] = 'd';
 	fmt[i] = '\0';
 
-	i = snprintf(buf, size-1, fmt, v);
+	i = snprintf(buf, size, fmt, v);
+	i = i < 0 ? 0 : min((size_t)i, size - 1);
 	buf[i] = '\0';
 
 	if (zenkaku)
@@ -397,6 +441,7 @@ int int_to_cstr(char *buf, size_t size, int v, int figures, bool zero_pad, bool 
 
 int float_to_cstr(char *buf, size_t size, float v, int figures, bool zero_pad, int precision, bool zenkaku)
 {
+	if (!size) return 0;
 	char fmt[64];
 	int i = 0;
 
@@ -411,13 +456,14 @@ int float_to_cstr(char *buf, size_t size, float v, int figures, bool zero_pad, i
 	fmt[i++] = 'f';
 	fmt[i] = '\0';
 
-	i = snprintf(buf, size-1, fmt, v);
+	i = snprintf(buf, size, fmt, v);
+	i = i < 0 ? 0 : min((size_t)i, size - 1);
 	buf[i] = '\0';
 
 	if (zenkaku) {
-		i = number_han2zen(buf, DIGIT_MAX);
+		i = number_han2zen(buf, size);
 		// XXX: bug in System40.exe
-		buf[i++] = 'F';
+		if ((size_t)i + 1 < size) buf[i++] = 'F';
 		buf[i] = '\0';
 	}
 	return i;

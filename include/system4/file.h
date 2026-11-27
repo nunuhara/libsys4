@@ -58,4 +58,7 @@ char *path_join(const char *dir, const char *base);
 struct string *path_join_string(struct string *dir, struct string *base);
 char *path_get_icase(const char *path);
 
+uint64_t file_mutation_gen(void);
+void file_note_fs_mutation(void);
+
 #endif /* SYSTEM4_FILE_H */

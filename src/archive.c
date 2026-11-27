@@ -62,12 +62,25 @@ struct archive_data *_archive_copy_descriptor(struct archive_data *src)
 }
 
 // FIXME?: assumes ASCII-compatible encoding
-char *archive_basename(const char *name)
+char *archive_basename_buf(const char *name, char *buf, size_t cap)
 {
-	char *basename = xstrdup(name);
+	size_t len = strlen(name);
+	char *basename;
+	if (buf && len < cap) {
+		basename = buf;
+		memcpy(basename, name, len + 1);
+	} else {
+		basename = xmalloc(len + 1);
+		memcpy(basename, name, len + 1);
+	}
 	char *dot = strrchr(basename, '.');
 	if (dot)
 		*dot = '\0';
 	sjis_normalize_path(basename);
 	return basename;
+}
+
+char *archive_basename(const char *name)
+{
+	return archive_basename_buf(name, NULL, 0);
 }

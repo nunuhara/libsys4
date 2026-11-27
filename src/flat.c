@@ -42,8 +42,10 @@ static struct string *buffer_read_flat_string(struct buffer *r)
 
 static void free_timeline(struct flat_timeline *tl)
 {
-	free_string(tl->name);
-	free_string(tl->library_name);
+	if (tl->name)
+		free_string(tl->name);
+	if (tl->library_name)
+		free_string(tl->library_name);
 	switch (tl->type) {
 		case FLAT_TIMELINE_GRAPHIC:
 			if (tl->graphic.keys) {
@@ -84,11 +86,14 @@ void flat_free_library(struct flat_library *lib)
 			free(lib->timeline.timelines);
 			break;
 		case FLAT_LIB_STOP_MOTION:
-			free_string(lib->stop_motion.library_name);
+			if (lib->stop_motion.library_name)
+				free_string(lib->stop_motion.library_name);
 			break;
 		case FLAT_LIB_EMITTER:
-			free_string(lib->emitter.library_name);
-			free_string(lib->emitter.end_cg_name);
+			if (lib->emitter.library_name)
+				free_string(lib->emitter.library_name);
+			if (lib->emitter.end_cg_name)
+				free_string(lib->emitter.end_cg_name);
 			break;
 		case FLAT_LIB_CG:
 		case FLAT_LIB_MEMORY:
@@ -96,7 +101,8 @@ void flat_free_library(struct flat_library *lib)
 			break;
 	}
 
-	free_string(lib->name);
+	if (lib->name)
+		free_string(lib->name);
 	if (lib->decoded)
 		free(lib->decoded);
 
@@ -136,9 +142,7 @@ static void read_talt(struct flat *fl)
 		fl->talt_entries[i].size = buffer_read_int32(&r);
 		fl->talt_entries[i].off = fl->talt.off + r.index + 8;
 
-		if (strncmp(buffer_strdata(&r), "AJP", 4) != 0)
-			WARNING("File in flat TALT section is not ajp format");
-
+		// TALT images may be AJP or PNG; the CG decoder identifies the format.
 		buffer_skip(&r, fl->talt_entries[i].size);
 		buffer_align(&r, 4);
 
@@ -239,11 +243,11 @@ static void read_graphic_tl(struct flat_timeline *tl, struct buffer *r, const in
 
 		tl->graphic.frames[f].count = n;
 
-		size_t need = n *ksz;
-		if (buffer_remaining(r) < need) {
-			WARNING("Frame %zu declares %u keys (%zu bytes) but only %zu bytes remain; truncating.",
-					f, n, need, buffer_remaining(r));
-			n = (int32_t)(buffer_remaining(r) / ksz);
+		size_t rem = buffer_remaining(r);
+		if (ksz > 0 && n > rem / ksz) {
+			WARNING("Frame %zu declares %u keys (%zu bytes each) but only %zu bytes remain; truncating.",
+					f, n, ksz, rem);
+			n = (uint32_t)(rem / ksz);
 			tl->graphic.frames[f].count = n;
 		}
 
@@ -274,6 +278,8 @@ static void parse_script_key(struct buffer *r, struct flat_script_key *out)
 				out->is_stop = true;
 				break;
 			case 3:
+				if (out->text)
+					free_string(out->text);
 				out->text = buffer_read_flat_string(r);
 				break;
 			default:
@@ -313,9 +319,25 @@ static bool parse_timeline(struct flat *fl, struct flat_timeline *tl, struct buf
 			break;
 		case FLAT_TIMELINE_SOUND:
 			WARNING("Unimplemented timeline SOUND");
+			if (tl->name) {
+				free_string(tl->name);
+				tl->name = NULL;
+			}
+			if (tl->library_name) {
+				free_string(tl->library_name);
+				tl->library_name = NULL;
+			}
 			return false;
 		default:
 			WARNING("Unknown MTLC timeline type %d", tl->type);
+			if (tl->name) {
+				free_string(tl->name);
+				tl->name = NULL;
+			}
+			if (tl->library_name) {
+				free_string(tl->library_name);
+				tl->library_name = NULL;
+			}
 			return false;
 	}
 
@@ -330,7 +352,10 @@ static bool parse_timelines(struct flat *fl,  struct buffer *r, struct flat_time
 
 
 	if (is_compressed) {
-		size_t uncompressed_size = buffer_read_int32(r);
+		int32_t raw_uncomp = buffer_read_int32(r);
+		if (raw_uncomp < 0 || raw_uncomp > 256 * 1024 * 1024)
+			goto error;
+		size_t uncompressed_size = (size_t)raw_uncomp;
 
 		allocated = xmalloc(uncompressed_size);
 		if (!zlib_decompress_exact(allocated, uncompressed_size, buffer_data(r), buffer_remaining(r))) {
@@ -491,10 +516,12 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 {
 	lib->off = fl->libl.off + 8 + r->index;
 	if (fl->elna.present) {
-		size_t size = buffer_read_int32(r);
-		if (buffer_remaining(r) < size) {
-			ERROR("Invalid ELNA string size %d", size);
+		int32_t raw_size = buffer_read_int32(r);
+		if (raw_size < 0 || (size_t)raw_size > buffer_remaining(r)) {
+			WARNING("Invalid ELNA string size %d", raw_size);
+			return false;
 		}
+		size_t size = (size_t)raw_size;
 
 		uint8_t *src = buffer_data(r);
 		uint8_t *tmp = xmalloc(size);
@@ -511,15 +538,17 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 		lib->name = buffer_read_flat_string(r);
 	}
 	lib->type = buffer_read_int32(r);
-	lib->size = buffer_read_int32(r);
+	int32_t raw_lib_size = buffer_read_int32(r);
 	lib->payload_off = fl->libl.off + 8 + r->index;
 
-	if (buffer_remaining(r) < lib->size) {
-		WARNING("LIBL entry has invalid size %zd while parsing library '%s'",
-		        lib->size,
-		        sjis2utf(lib->name->text, lib->name->size));
+	if (raw_lib_size < 0 || (size_t)raw_lib_size > buffer_remaining(r)) {
+		char *utf = sjis2utf(lib->name->text, lib->name->size);
+		WARNING("LIBL entry has invalid size %d while parsing library '%s'",
+		        raw_lib_size, utf);
+		free(utf);
 		return false;
 	}
+	lib->size = (size_t)raw_lib_size;
 
 	struct buffer r_payload;
 	buffer_init(&r_payload, buffer_data(r), lib->size);
@@ -553,8 +582,9 @@ static bool parse_library(struct flat *fl, struct flat_library *lib, struct buff
 			return false;
 		case FLAT_LIB_TIMELINE:
 			if (!parse_timelines(fl, &r_payload, &lib->timeline.timelines, &lib->timeline.nr_timelines)) {
-				WARNING("Failed to parse LIBL timeline library '%s'",
-				        sjis2utf(lib->name->text, lib->name->size));
+				char *utf = sjis2utf(lib->name->text, lib->name->size);
+				WARNING("Failed to parse LIBL timeline library '%s'", utf);
+				free(utf);
 				return false;
 			}
 			break;
@@ -590,6 +620,7 @@ static void read_libl(struct flat *fl)
 	for (unsigned i = 0; i < fl->nr_libraries; i++) {
 		if (!parse_library(fl, &fl->libraries[i], &r)) {
 			WARNING("Failed to parse LIBL library %d", i);
+			flat_free_library(&fl->libraries[i]);
 			fl->nr_libraries = i;
 			break;
 		}
@@ -666,10 +697,16 @@ static bool read_section(const char *magic, struct buffer *r, struct flat_sectio
 		return false;
 	if (strncmp(buffer_strdata(r), magic, 4) != 0)
 		return false;
-	dst->present = true;
-	dst->off = r->index;
+	size_t saved_index = r->index;
 	buffer_skip(r, 4);
-	dst->size = buffer_read_int32(r);
+	int32_t raw_size = buffer_read_int32(r);
+	if (raw_size < 0 || (size_t)raw_size > buffer_remaining(r)) {
+		r->index = saved_index;
+		return false;
+	}
+	dst->present = true;
+	dst->off = saved_index;
+	dst->size = (size_t)raw_size;
 	buffer_skip(r, dst->size);
 	return true;
 }

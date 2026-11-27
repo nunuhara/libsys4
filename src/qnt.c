@@ -74,52 +74,64 @@ void qnt_extract_header(const uint8_t *b, struct qnt_header *qnt)
  *   pic: pixel to be stored
  *   b  : raw data (pointer to pixel)
  */
-static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
+static bool qnt_header_valid(const struct qnt_header *qnt)
 {
-	int i, j, x, y, w, h;
-	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1) * 3;
-	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
+	if (qnt->width <= 0 || qnt->height <= 0 || qnt->width > 32768 || qnt->height > 32768) {
+		WARNING("Invalid QNT dimensions: %dx%d", qnt->width, qnt->height);
+		return false;
+	}
+	if (qnt->hdr_size < 44 || qnt->pixel_size < 0 || qnt->alpha_size < 0) {
+		WARNING("Invalid QNT header sizes");
+		return false;
+	}
+	return true;
+}
 
-	if (!zlib_decompress_exact(raw, ucbuf, b, qnt->pixel_size)) {
+static bool extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
+{
+	size_t w = (size_t)qnt->width;
+	size_t h = (size_t)qnt->height;
+	size_t ucbuf = ((w + 1) & ~(size_t)1) * ((h + 1) & ~(size_t)1) * 3;
+	uint8_t *raw = xmalloc(ucbuf);
+
+	if (!zlib_decompress_exact(raw, ucbuf, b, (size_t)qnt->pixel_size)) {
 		WARNING("uncompress failed\n");
 		free(raw);
-		return;
+		return false;
 	}
 
-	w = qnt->width;
-	h = qnt->height;
-
-	j = 0;
-	for (i = 2; i >= 0; i--) {
-		for (y = 0; y < (h -1); y+=2) {
-			for (x = 0; x < (w -1); x+=2) {
+	size_t j = 0;
+	for (int i = 2; i >= 0; i--) {
+		size_t y = 0, x = 0;
+		for (y = 0; y + 1 < h; y += 2) {
+			for (x = 0; x + 1 < w; x += 2) {
 				pic[( y   *w+x)  *3 +i] = raw[j];
 				pic[((y+1)*w+x)  *3 +i] = raw[j+1];
 				pic[( y   *w+x+1)*3 +i] = raw[j+2];
 				pic[((y+1)*w+x+1)*3 +i] = raw[j+3];
-				j+=4;
+				j += 4;
 			}
 			if (x != w) {
 				pic[( y   *w+x)*3 +i] = raw[j];
 				pic[((y+1)*w+x)*3 +i] = raw[j+1];
-				j+=4;
+				j += 4;
 			}
 		}
 		if (y != h) {
-			for (x = 0; x < (w -1); x+=2) {
+			for (x = 0; x + 1 < w; x += 2) {
 				pic[(y*w+x  )*3+i] = raw[j];
 				pic[(y*w+x+1)*3+i] = raw[j+2];
-				j+=4;
+				j += 4;
 			}
 			if (x != w) {
 				pic[( y   *w+x)*3 +i] = raw[j];
-				j+=4;
+				j += 4;
 			}
 		}
 	}
 
 	if (w > 1) {
-		for (x = 1; x < w; x++) {
+		for (size_t x = 1; x < w; x++) {
 			pic[x*3  ] = pic[(x-1)*3  ] - pic[x*3  ];
 			pic[x*3+1] = pic[(x-1)*3+1] - pic[x*3+1];
 			pic[x*3+2] = pic[(x-1)*3+2] - pic[x*3+2];
@@ -127,12 +139,12 @@ static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 	}
 
 	if (h > 1) {
-		for (y = 1; y < h; y++) {
+		for (size_t y = 1; y < h; y++) {
 			pic[(y*w)*3  ] = pic[((y-1)*w)*3  ] - pic[(y*w)*3  ];
 			pic[(y*w)*3+1] = pic[((y-1)*w)*3+1] - pic[(y*w)*3+1];
 			pic[(y*w)*3+2] = pic[((y-1)*w)*3+2] - pic[(y*w)*3+2];
 
-			for (x = 1; x < w; x++) {
+			for (size_t x = 1; x < w; x++) {
 				int px, py;
 				py = pic[((y-1)*w+x  )*3];
 				px = pic[( y   *w+x-1)*3];
@@ -148,6 +160,7 @@ static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
 	}
 
 	free(raw);
+	return true;
 }
 
 /*
@@ -157,48 +170,49 @@ static void extract_pixel(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
  *   pic: pixel to be stored
  *   b  : raw data (pointer to alpha pixel)
  */
-static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
+static bool extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b)
 {
-	int i, x, y, w, h;
-	unsigned long ucbuf = ((qnt->width+1) & ~1) * ((qnt->height+1) & ~1);
-	uint8_t *raw = malloc(sizeof(uint8_t) * ucbuf);
+	size_t w = (size_t)qnt->width;
+	size_t h = (size_t)qnt->height;
+	size_t ucbuf = ((w + 1) & ~(size_t)1) * ((h + 1) & ~(size_t)1);
+	uint8_t *raw = xmalloc(ucbuf);
 	size_t actual_size;
 
 	// ALDExplorer pads alpha data to even width, but not even height.
-	size_t required_size = ((qnt->width+1) & ~1) * qnt->height;
-	if (!zlib_decompress(raw, ucbuf, b, qnt->alpha_size, &actual_size)
+	size_t required_size = ((w + 1) & ~(size_t)1) * h;
+	if (!zlib_decompress(raw, ucbuf, b, (size_t)qnt->alpha_size, &actual_size)
 			|| actual_size < required_size) {
 		WARNING("uncompress failed\n");
 		free(raw);
-		return;
+		return false;
 	}
 
-	w = qnt->width;
-	h = qnt->height;
-
-	i = 0;
-	pic[0] = raw[i++];
-	for (x = 1; x < w; x++) {
+	pic[0] = raw[0];
+	size_t i = 1;
+	for (size_t x = 1; x < w; x++) {
 		pic[x] = pic[x-1] - raw[i];
 		i++;
 	}
-	if (w%2) i++;
+	if (w % 2)
+		i++;
 
 	if (h > 1) {
-		for (y = 1; y < h; y++) {
+		for (size_t y = 1; y < h; y++) {
 			pic[y*w] = pic[(y-1) *w] - raw[i]; i++;
-			for (x = 1; x < w; x++) {
+			for (size_t x = 1; x < w; x++) {
 				int pax, pay;
 				pax = pic[ y   * w + x -1];
 				pay = pic[(y-1)* w + x   ];
 				pic[y*w+x] = ((pax+pay) >> 1) - raw[i];
 				i++;
 			}
-			if (w%2) i++;
+			if (w % 2)
+				i++;
 		}
 	}
 
 	free(raw);
+	return true;
 }
 
 /*
@@ -210,12 +224,14 @@ static void extract_alpha(struct qnt_header *qnt, uint8_t *pic, const uint8_t *b
  */
 bool qnt_checkfmt(const uint8_t *data)
 {
-	if (data[0] != 'Q' || data[1] != 'N' || data[2] != 'T') return false;
+	if (!data || data[0] != 'Q' || data[1] != 'N' || data[2] != 'T') return false;
 	return true;
 }
 
 static void qnt_init_metrics(struct qnt_header *qnt, struct cg_metrics *dst)
 {
+	dst->x = qnt->x0;
+	dst->y = qnt->y0;
 	dst->w = qnt->width;
 	dst->h = qnt->height;
 	dst->bpp = qnt->bpp;
@@ -225,10 +241,28 @@ static void qnt_init_metrics(struct qnt_header *qnt, struct cg_metrics *dst)
 	dst->alpha_pitch = 1;
 }
 
-bool qnt_get_metrics(const uint8_t *data, struct cg_metrics *dst)
+bool qnt_get_metrics_sized(const uint8_t *data, size_t size, struct cg_metrics *dst)
 {
+	if (!data || size < 44)
+		return false;
 	struct qnt_header qnt;
 	qnt_extract_header(data, &qnt);
+	if (!qnt_header_valid(&qnt))
+		return false;
+	if ((size_t)qnt.hdr_size > size)
+		return false;
+	qnt_init_metrics(&qnt, dst);
+	return true;
+}
+
+bool qnt_get_metrics(const uint8_t *data, struct cg_metrics *dst)
+{
+	if (!data)
+		return false;
+	struct qnt_header qnt;
+	qnt_extract_header(data, &qnt);
+	if (!qnt_header_valid(&qnt))
+		return false;
 	qnt_init_metrics(&qnt, dst);
 	return true;
 }
@@ -240,31 +274,47 @@ bool qnt_get_metrics(const uint8_t *data, struct cg_metrics *dst)
  *
  *   return: extracted image data and information
 */
-void qnt_extract(const uint8_t *data, struct cg *cg)
+void qnt_extract_sized(const uint8_t *data, size_t size, struct cg *cg)
 {
+	if (!data || size < 44)
+		return;
 	struct qnt_header qnt;
 	qnt_extract_header(data, &qnt);
+	if (!qnt_header_valid(&qnt))
+		return;
+	if ((size_t)qnt.hdr_size > size ||
+	    (size_t)qnt.pixel_size > size - (size_t)qnt.hdr_size ||
+	    (size_t)qnt.alpha_size > size - (size_t)qnt.hdr_size - (size_t)qnt.pixel_size) {
+		WARNING("QNT data truncated");
+		return;
+	}
 	qnt_init_metrics(&qnt, &cg->metrics);
 
-	uint8_t *pixels = xcalloc(3, qnt.width * qnt.height);
+	size_t nr_pixels = (size_t)qnt.width * (size_t)qnt.height;
+	uint8_t *pixels = xcalloc(3, nr_pixels);
 	if (qnt.pixel_size) {
-		extract_pixel(&qnt, pixels, data + qnt.hdr_size);
+		if (!extract_pixel(&qnt, pixels, data + qnt.hdr_size)) {
+			free(pixels);
+			return;
+		}
 	}
 
-	cg->type = ALCG_QNT;
-
-	// combine color/alpha data
-	uint8_t *alpha = xmalloc(qnt.width * qnt.height);
-	uint8_t *tmp = xmalloc(qnt.width * qnt.height * 4);
+	uint8_t *alpha = xmalloc(nr_pixels);
 	if (qnt.alpha_size) {
-		extract_alpha(&qnt, alpha, data + qnt.hdr_size + qnt.pixel_size);
+		if (!extract_alpha(&qnt, alpha, data + (size_t)qnt.hdr_size + (size_t)qnt.pixel_size)) {
+			free(alpha);
+			free(pixels);
+			return;
+		}
 	} else {
 		// FIXME: Some CGs don't display correctly unless we add an alpha channel here.
 		//        Not sure why. It seems to affect some but not all alpha-less CGs.
 		//        E.g. CG#90 (and similar) from the Rance 2 digest version.
-		memset(alpha, 0xFF, qnt.width*qnt.height);
+		memset(alpha, 0xFF, nr_pixels);
 	}
-	for (int src_i = 0, dst_i = 0, p = 0; p < qnt.width * qnt.height; p++) {
+
+	uint8_t *tmp = xmalloc(nr_pixels * 4);
+	for (size_t src_i = 0, dst_i = 0, p = 0; p < nr_pixels; p++) {
 		tmp[dst_i++] = pixels[src_i++];
 		tmp[dst_i++] = pixels[src_i++];
 		tmp[dst_i++] = pixels[src_i++];
@@ -272,7 +322,13 @@ void qnt_extract(const uint8_t *data, struct cg *cg)
 	}
 	free(alpha);
 	free(pixels);
+	cg->type = ALCG_QNT;
 	cg->pixels = tmp;
+}
+
+void qnt_extract(const uint8_t *data, struct cg *cg)
+{
+	qnt_extract_sized(data, SIZE_MAX, cg);
 }
 
 /*
@@ -307,15 +363,15 @@ static void qnt_write_header(struct qnt_header *qnt, FILE *fp) {
 }
 
 static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
-	int width = (qnt->width + 1) & ~1;
-	int height = (qnt->height + 1) & ~1;
+	size_t width = (size_t)((qnt->width + 1) & ~1);
+	size_t height = (size_t)((qnt->height + 1) & ~1);
 
-	const int bufsize = width * height * 3;
-	uint8_t *buf = malloc(bufsize);
+	const size_t bufsize = width * height * 3;
+	uint8_t *buf = xmalloc(bufsize);
 	uint8_t *p = buf;
 	for (int c = 2; c >= 0; c--) {
-		for (int y = 0; y < height; y += 2) {
-			for (int x = 0; x < width; x += 2) {
+		for (size_t y = 0; y < height; y += 2) {
+			for (size_t x = 0; x < width; x += 2) {
 				*p++ = rows[y  ][ x   *4 + c];
 				*p++ = rows[y+1][ x   *4 + c];
 				*p++ = rows[y  ][(x+1)*4 + c];
@@ -326,7 +382,7 @@ static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
 	assert(p == buf + bufsize);
 
 	size_t destsize = zlib_compress_bound(bufsize);
-	uint8_t *compressed = malloc(destsize);
+	uint8_t *compressed = xmalloc(destsize);
 	destsize = zlib_compress(compressed, destsize, buf, bufsize,
 			ZLIB_BEST_COMPRESSION);
 	if (!destsize) {
@@ -335,25 +391,25 @@ static uint8_t *encode_pixels(struct qnt_header *qnt, uint8_t **rows) {
 		free(compressed);
 		return NULL;
 	}
-	qnt->pixel_size = destsize;
+	qnt->pixel_size = (int)destsize;
 
 	free(buf);
 	return compressed;
 }
 
 static uint8_t *encode_alpha(struct qnt_header *qnt, uint8_t **rows) {
-	int width = (qnt->width + 1) & ~1;
-	int height = (qnt->height + 1) & ~1;
+	size_t width = (size_t)((qnt->width + 1) & ~1);
+	size_t height = (size_t)((qnt->height + 1) & ~1);
 
-	const int bufsize = width * height;
-	uint8_t *buf = malloc(bufsize);
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++)
+	const size_t bufsize = width * height;
+	uint8_t *buf = xmalloc(bufsize);
+	for (size_t y = 0; y < height; y++) {
+		for (size_t x = 0; x < width; x++)
 			buf[y * width + x] = rows[y][x * 4 + 3];
 	}
 
 	size_t destsize = zlib_compress_bound(bufsize);
-	uint8_t *compressed = malloc(destsize);
+	uint8_t *compressed = xmalloc(destsize);
 	destsize = zlib_compress(compressed, destsize, buf, bufsize,
 			ZLIB_BEST_COMPRESSION);
 	if (!destsize) {
@@ -362,7 +418,7 @@ static uint8_t *encode_alpha(struct qnt_header *qnt, uint8_t **rows) {
 		free(compressed);
 		return NULL;
 	}
-	qnt->alpha_size = destsize;
+	qnt->alpha_size = (int)destsize;
 
 	free(buf);
 	return compressed;
@@ -389,10 +445,10 @@ static void filter(uint8_t **rows, int width, int height) {
 
 static uint8_t **allocate_bitmap_buffer(int width, int height)
 {
-	uint8_t **rows = xmalloc(sizeof(uint8_t*)*height);
-	uint8_t *buffer = calloc(1, height * width * 4);
+	uint8_t **rows = xmalloc(sizeof(uint8_t*) * (size_t)height);
+	uint8_t *buffer = xcalloc(1, (size_t)height * (size_t)width * 4);
 	for (int y = 0; y < height; y++) {
-		rows[y] = buffer + y * width * 4;
+		rows[y] = buffer + (size_t)y * (size_t)width * 4;
 	}
 	return rows;
 }
